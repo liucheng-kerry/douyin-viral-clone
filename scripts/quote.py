@@ -52,6 +52,13 @@ DEFAULT_MODEL = 'seedance2.5'
 # 当本地没有「输入视频档」实测样本时的保守系数区间（公开资料口径，待实测校准）
 REF_RATE_RANGE = (0.55, 0.65)
 
+# 本账号一条历史任务都没有时（第一次用即梦的新账号）的兜底参考价。
+# 这些数字来自同款账号的实测样本，不是本账号实测——所以一律标注"参考价"，
+# 且生成第一段后必须跑 --calibrate 换成真实单价。
+# 没有它，新学员在阶段 0 就被"报预算"这道门卡死（list_task 是空的）。
+REFERENCE_VIDEO_RATE = {'480p': 12.0, '720p': 20.0, '1080p': 30.0}
+REFERENCE_IMAGE_RATE = [('5.0 / 2k', 3), ('5.0Pro / 2k', 8)]
+
 
 # ------------------------------------------------------------------ 取数
 
@@ -181,14 +188,17 @@ def print_rates(video, image, refs):
                 print('  %-6s %-6s %6.2f 积分/秒（%d 条，区间 %.2f–%.2f）'
                       % (res, label, med(xs), len(xs), min(xs), max(xs)))
     else:
-        print('视频：暂无可用样本')
+        print('视频：本账号暂无历史样本，下列为**参考价**（同款账号实测经验值，非本账号实测）')
+        for res in RES_ORDER:
+            if res in REFERENCE_VIDEO_RATE:
+                print('  %-6s %-6s %6.2f 积分/秒（参考价，未实测）' % (res, '无输入视频', REFERENCE_VIDEO_RATE[res]))
     if image:
         print('图片：')
         for k in sorted(image):
             xs = image[k]
             print('  %-16s %d 积分/张（%d 条）' % (k, int(med(xs)), len(xs)))
     else:
-        print('图片：暂无可用样本')
+        print('图片：本账号暂无历史样本，参考价：' + '、'.join('%s %d 积分/张' % (k, v) for k, v in REFERENCE_IMAGE_RATE))
     if refs:
         print('  带参考视频的任务 %d 条：计费秒数含参考片段，单价要用 --calibrate --ref <秒> 反推' % len(refs))
     else:
@@ -208,8 +218,12 @@ def quote(video, args):
             print('⚠ 本机没有 %s 档实测，按 720p 单价等比估算——仅供内部判断，不要直接写进申请单' % res)
             base = fallback
         else:
-            print('✘ 本机没有任何视频实测单价，无法报价。先生成 1 段 5s/720p 小样测价。')
-            return 1
+            # 新账号第一次跑：list_task 是空的。不能因此拒绝报价——阶段 0 必须能报预算，
+            # 否则学员卡在"先出小样测价"和"先报预算"的死循环里。
+            guess = REFERENCE_VIDEO_RATE.get(res) or REFERENCE_VIDEO_RATE['720p']
+            base = [guess]
+            print('⚠ 本账号还没有视频历史任务，按**参考价 %.0f 积分/秒**估算（同款账号经验值，非本账号实测）' % guess)
+            print('   偏差可能 ±30%：第一段生成后立刻跑 `--calibrate` 换成真实单价，再报后面几段')
 
     unit = med(base)
     no_ref = unit * dur

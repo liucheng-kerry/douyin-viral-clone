@@ -213,9 +213,9 @@ python scripts/ref_check.py --materials 04-提示词/clip_NN.materials.txt --dur
 
 **验收（每段必做）**：
 ```bash
-ffprobe -v error -show_entries stream=codec_type,codec_name -of csv=p=0 05-成片/clip_01.mp4   # 期望 h264,video + aac,audio
+bash scripts/ffx.sh ffprobe -v error -show_entries stream=codec_type,codec_name -of csv=p=0 05-成片/clip_01.mp4   # 期望 h264,video + aac,audio
 mkdir -p 05-成片/_qc                                                                          # ffmpeg 不会自动建目录
-ffmpeg -y -v error -i 05-成片/clip_01.mp4 -vn -ar 16000 -ac 1 05-成片/_qc/clip_01.wav          # 抽音轨后交给平台转写工具
+bash scripts/ffx.sh ffmpeg -y -v error -i 05-成片/clip_01.mp4 -vn -ar 16000 -ac 1 05-成片/_qc/clip_01.wav          # 抽音轨后交给平台转写工具
 ```
 **转写用平台的音频转写能力（秒级）；本地 whisper 跑短音频要几分钟，别用。**
 
@@ -238,8 +238,8 @@ ffmpeg -y -v error -i 05-成片/clip_01.mp4 -vn -ar 16000 -ac 1 05-成片/_qc/cl
 
 **校验命令**：
 ```bash
-ffmpeg -i 05-配音/clip_01_dub.mp4 -af "silencedetect=noise=-35dB:d=0.25" -f null -
-ffmpeg -i 05-配音/clip_01_dub.mp4 -af volumedetect -f null -
+bash scripts/ffx.sh ffmpeg -i 05-配音/clip_01_dub.mp4 -af "silencedetect=noise=-35dB:d=0.25" -f null -
+bash scripts/ffx.sh ffmpeg -i 05-配音/clip_01_dub.mp4 -af volumedetect -f null -
 ```
 
 ## 阶段 5.5 → 阶段 6（带人声成片 → BGM）

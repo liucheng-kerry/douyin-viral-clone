@@ -219,7 +219,7 @@ dreamina image2video --image=./first_A.png --prompt="..." --video_resolution=720
 所有视频命令（`image2video` / `text2video` / `frames2video` / `multiframe2video` / `multimodal2video`）**没有** `--audio` 之类的"输出音频开关"，但**输出的 mp4 自带 AAC 音轨**——seedance 2.5 是原生音画同步模型，声音是模型生成的：
 
 ```bash
-ffprobe -v error -show_entries stream=codec_type,codec_name -of csv=p=0 clip_01.mp4
+bash scripts/ffx.sh ffprobe -v error -show_entries stream=codec_type,codec_name -of csv=p=0 clip_01.mp4
 # h264,video
 # aac,audio      ← 音轨一直都在（实测 4–8s 段：mean −34dB / max −3.6dB / 全程无静音）
 ```

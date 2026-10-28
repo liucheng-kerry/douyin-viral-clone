@@ -2,3 +2,5 @@ desktop.ini
 Thumbs.db
 *.log
 __pycache__/
+*.pyc
+.DS_Store

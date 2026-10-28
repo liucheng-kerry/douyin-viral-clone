@@ -19,6 +19,12 @@ set -euo pipefail
 
 VIDEO="${1:-}"
 OUT="${2:-./01-拆解}"
+case "$VIDEO" in
+  -h|--help|help)
+    sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+esac
 if [ -z "$VIDEO" ]; then
   echo "用法: bash scripts/prepare-local-video.sh <视频文件> [输出目录]" >&2
   exit 1

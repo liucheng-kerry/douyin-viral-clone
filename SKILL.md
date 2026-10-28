@@ -79,13 +79,38 @@ replicate/2026-10-27-xxx/
 └── 06-BGM/       # bgm-spec.md 适配单 + BGM 音频 + 最终混音版成片
 ```
 
-**路径基准约定（很关键，混用会到处报"文件不存在"）**：除阶段 0/1 的脚本调用写成 `replicate/<日期>-<slug>/01-拆解/...`（明确给全路径）外，**阶段 1.6 之后的所有命令都默认在项目目录 `replicate/<日期>-<slug>/` 内执行**，所以写的是 `01-拆解/...`、`03-资产/...`、`05-成片/...`。跨阶段复制命令时先确认自己在哪个目录。
+**路径基准约定（很关键，混用会到处报"文件不存在"）**：
+
+- **所有命令都在项目目录 `replicate/<日期>-<slug>/` 内执行**，产物路径写 `01-拆解/...`、`03-资产/...`、`05-成片/...`。
+- **脚本不在项目里，在技能目录里**。文档里的 `scripts/xxx`、`vendored/xxx` 相对 `~/.workbuddy/skills/douyin-viral-clone`；不接这一步，在工作区直接敲 `bash scripts/check-env.sh` 只会得到 `No such file or directory`（实测）。开工第一件事就是把脚本入口接进项目（见阶段 0），之后 `scripts/xxx` 这套写法原样成立。
+- 跨阶段复制命令时先确认自己在哪个目录：`pwd` 应该以 `replicate/<日期>-<slug>` 结尾。
+
+**ffmpeg 一律走包装器，不要写裸 `ffmpeg`**：Windows 上 winget 装的 `AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe` 是 **0 字节别名壳**，跑 `ffmpeg ...` 会 **exit 0 但什么都不做**（不报错、不产出文件，实测）。拼接、抽末帧、抽音轨全靠它，静默失败等于整套流程空跑。所以手跑命令统一写成：
+
+```bash
+bash scripts/ffx.sh ffmpeg  -y -i a.mp4 ...     # 等价于 ffmpeg  ...
+bash scripts/ffx.sh ffprobe -v error -show_entries format=duration -of csv=p=0 a.mp4
+```
+
+`ffx.sh` 会挑一个**真能跑**的 ffmpeg/ffprobe（PATH 里的壳会被 `-version` 探测淘汰，回落到 winget 包目录里的真 exe），找不到时退出码 3 并给安装命令。macOS/Linux 上它就是一层透传，没有副作用。
 
 ## 工作流（阶段 0 环境自检 + 八个执行阶段：1 → 1.6 → 2 → 3 → 4 → 5 → 5.5 → 6；其中 0 环境与登录体检、1.6 风格锚定、3 出图参数确认、5 逐次生成授权 + 提交前双校验是硬门）
 
 ### 阶段 0：环境自检与安装引导（开工前必跑，学员第一次用尤其重要）
 
-**第一句话先跑自检，不要在缺依赖的情况下闷头往下走**：
+**第 0 步：先建项目目录并接上脚本入口**（不做这一步，后面每条 `scripts/xxx` 都是 no such file）
+
+```bash
+SKILL_DIR="$HOME/.workbuddy/skills/douyin-viral-clone"
+mkdir -p "replicate/<日期>-<slug>" && cd "replicate/<日期>-<slug>"
+ln -s "$SKILL_DIR/scripts"  scripts  2>/dev/null || cp -r "$SKILL_DIR/scripts"  scripts
+ln -s "$SKILL_DIR/vendored" vendored 2>/dev/null || cp -r "$SKILL_DIR/vendored" vendored
+ls scripts/check-env.sh               # 能看到文件才算接好
+```
+
+Windows 上 `ln -s` 需要开发者模式，失败时会自动回退成复制；复制版**不会跟着技能更新**，技能升级后重跑这两行。确认完再往下。
+
+**第 1 步：跑自检，不要在缺依赖的情况下闷头往下走**：
 
 ```bash
 bash scripts/check-env.sh
@@ -143,13 +168,25 @@ dreamina user_credit               # {"total_credit": 5799, "user_id": ..., "vip
 
 不够就**现在**说，不要跑到阶段 5 才发现余额见底。按需精算用 `python scripts/quote.py`。
 
+**新账号第一次跑 quote.py 会没有历史任务**（`list_task` 是空的）——这时它会打印「参考价」（同款账号经验值，标注未实测）并照常算两档，不会拒绝报价。**直接用它报预算，别卡在"先出小样测价"上**；等第一段真生成完，立刻跑 `python scripts/quote.py --calibrate --ref <参考秒数>` 换成你这台账号的真实单价，后面几段按实测报。
+
 其他常见缺项：whisper 缺失 → 口播转写不可用（阶段 1 会残废，必须装）；ffmpeg 缺失 → 抽帧/混音全挂；docker 未启动 → 抖音自动下载通道降级，改走「手机保存视频拖进对话」。
 
 ### 阶段 1：对标拆解（方法论权威 = 内嵌的 `yyl-benchmark-breakdown`）
 
 本技能在 `vendored/yyl-benchmark-breakdown/` 内嵌了 `yyl-benchmark-breakdown` 的**一比一完整副本**（含 SKILL.md、fetch-playbook、visual-framework、output-template、全部脚本）。它不作为独立技能加载，而是**先读它的 SKILL.md，再按其工作流在本项目内执行**——阶段 1 的识别、取证、分析、输出全部遵循它的规范，不许自创拆解格式：
 
-1. **先读 `vendored/yyl-benchmark-breakdown/SKILL.md`**，再跑它的前置清单 `bash vendored/yyl-benchmark-breakdown/scripts/check-deps.sh`；缺依赖按其 `INSTALL.md` 指引补齐。
+1. **先读 `vendored/yyl-benchmark-breakdown/SKILL.md`**，再跑它的前置清单 `bash vendored/yyl-benchmark-breakdown/scripts/check-deps.sh`。
+
+   ⚠️ **它的自检有三项对本技能不适用，别被"必需依赖缺 N 项"吓住**（实测：本机 whisper 可用，它仍报缺失并劝你"本地 API 可用前不要开始拆解"）：
+
+   | 它报的 | 实际 | 怎么办 |
+   |---|---|---|
+   | Docker daemon 未启动 / 本地下载 API 不可达 | 那是它主力取数通道，本技能有非 Docker 通道 | **忽略**，直接走下面的 `fetch-video.sh`（yt-dlp）或手机保存视频 |
+   | XHS-Downloader API 不可达 | 只影响小红书自动下载 | **忽略**，让学员把小红书视频存下来再跑 `prepare-local-video.sh` |
+   | `whisper` 缺失 | 它只查 PATH 里的 `whisper` 命令；本技能用 `python -m whisper`，装了模块就够 | 用 `check-env.sh` 的结果为准：那里 ✅ 就继续 |
+
+   **只有 ffmpeg / ffprobe / python / yt-dlp 真的缺失才需要装**（缺 ffmpeg 或 python 时本技能连抽帧都做不了）。
 2. **按它的 `references/fetch-playbook.md` 识别平台与粒度**（单条/账号），跑 `bash vendored/yyl-benchmark-breakdown/scripts/prepare-assets.sh` 准备证据包。
 3. **取数回退按它的四级回退链**（本地下载 API → TikHub → Jina Reader → 引导粘贴）。**本技能的证据通道作兜底**：当它依赖的 Docker 本地 API 不可用时，用下面的 fetch-video.sh / 本地视频通道取证，产出的证据照样交给它的拆解框架分析。
 4. **拆解分析按它的框架**：通用四层 + 视觉七维（`vendored/yyl-benchmark-breakdown/references/visual-framework.md`）+ 平台特化，产出它的**三件套**（可复用爆款公式 / 画面+口播时间轴对齐拆解 / 人设与内容定位，模板见其 `references/output-template.md`），报告末尾必须附完整转写稿。
@@ -158,13 +195,13 @@ dreamina user_credit               # {"total_credit": 5799, "user_id": ..., "vip
 
 **证据获取兜底通道（yyl 取数失败时用，不依赖 Docker）**：
 
-- **有链接**（B站/TikTok/抖音/YouTube 等）：先跑 `bash scripts/fetch-video.sh "<链接>" "replicate/<日期>-<slug>/01-拆解"`。脚本用 yt-dlp 下载+合并音视频、生成 metadata.json（标题/作者/播放/点赞/发布时间等），成功后视频落在 `01-拆解/video/`。抖音/小红书经常需要登录态：让用户设 `COOKIES_FROM=chrome`（或 edge）重跑；网络受限时设 `YTDLP_PROXY=http://127.0.0.1:7892`。
+- **有链接**（B站/TikTok/抖音/YouTube 等）：在项目目录内跑 `bash scripts/fetch-video.sh "<链接>" "01-拆解"`。脚本用 yt-dlp 下载+合并音视频、生成 metadata.json（标题/作者/播放/点赞/发布时间等），成功后视频落在 `01-拆解/video/`。抖音/小红书经常需要登录态：让用户设 `COOKIES_FROM=chrome`（或 edge）重跑；网络受限时设 `YTDLP_PROXY=http://127.0.0.1:7892`。
 - **用户给了本地视频文件**：直接跑下面的证据包脚本。
 
 然后跑本技能自带的证据包脚本完成转写+抽帧：
 
 ```bash
-bash scripts/prepare-local-video.sh "<视频文件路径>" "replicate/<日期>-<slug>/01-拆解"
+bash scripts/prepare-local-video.sh "<视频文件路径>" "01-拆解"
 ```
 
 脚本产出 `metadata.json` / `audio.txt`（whisper 转写）/ `frame_*.jpg`（**每秒一帧的逐帧采样**）/ `scene_*.jpg`（场景切换帧）/ `sheet_*.jpg`（contact sheet，仅全局概览）/ `manifest.txt`。跑完先读 `manifest.txt` 回显抓到了什么。
@@ -211,8 +248,7 @@ contact sheet 只用来建立整体印象，**正式拆解必须逐张分析 `fr
 **前置：原片必须已经落在 `01-拆解/video/` 下**（`fetch-video.sh` 直接产出到这里；用户给本地文件时 `prepare-local-video.sh` 会自动复制一份进去）。阶段 1.6 和阶段 3 的同秒帧比对都从这里取源。
 
 ```bash
-python scripts/style_anchor.py --video "replicate/<日期>-<slug>/01-拆解/video/<视频文件>" \
-  --out "replicate/<日期>-<slug>/01-拆解" --frames 12
+python scripts/style_anchor.py --video "01-拆解/video/<视频文件>" --out "01-拆解" --frames 12
 ```
 
 脚本用 ffmpeg 均匀抽 12 帧做像素统计（零第三方依赖），产出两个文件：
@@ -484,7 +520,7 @@ AVOID：
   抽末帧（上一段 clip 的最后一帧，直接把动作接上，比改绘更连续）：
 
   ```bash
-  ffmpeg -y -sseof -0.15 -i "05-成片/clip_01.mp4" -frames:v 1 -q:v 2 "03-资产/last_01.jpg"
+  bash scripts/ffx.sh ffmpeg -y -sseof -0.15 -i "05-成片/clip_01.mp4" -frames:v 1 -q:v 2 "03-资产/last_01.jpg"
   ```
 
   接力段的构图参考传 `last_01.jpg`，不再传 `first_X.png`；申请单里的「上传清单」要如实写文件名与职责。
@@ -601,8 +637,25 @@ python scripts/gate_check.py --image-gate 03-资产/image-gate.md --batch img_02
 
    产出 `03-资产/qc/qc-report.md`（基准=原片同秒帧，对照=生成图）：色温 Δ(R−B)、饱和 Δ、对比 Δ、亮度 Δ、锐度比，五项逐项 ✅同族 / ⚠️轻微偏 / ❌明显偏。**出现 ❌ 就按差值方向改风格句**——偏冷→补"暖黄光、暖调"，更艳→补"低饱和、灰调"，更暗→补"亮调、曝光充足"；重出直到五项全 ✅。数字与肉眼冲突时以肉眼为准，但要在报告里写清理由。
 6. **道具图（可选，img_04）**：只有"有辨识度且会反复出现"的道具才做，单件特写 + MATERIAL TRUTH，比例 1:1。
-7. 每张的固定动作一模一样：**申请 → 点名授权 → 记账 → `gate_check` → 生成 → 回填实际积分 → 质检 → 交付**。`--poll` 超时仍 querying → `query_result --submit_id=<id> --download_dir=03-资产`（在项目目录内执行；不在就补全成 `replicate/<项目>/03-资产`）跟进下载。
-8. 落盘后按规范改名：`char_<角色名>.png` / `scene_<场景名>.png` / `prop_<道具名>.png` / `first_<X>.png`。**不要为同一资产多留几张"备选"**——`ls` 一眼看不出哪张是定稿，阶段 5 传错素材是常事；确实要留就把废稿移到 `03-资产/_old/`。
+7. 每张的固定动作一模一样：**申请 → 点名授权 → 记账 → `gate_check` → 生成 → 取回文件 → 回填实际积分 → 质检 → 交付**。
+
+   **注意：`--poll` 只负责等，不会把图存到项目里**（`list_task` 的结果里也没有下载地址，只有 `item_id`）。生成成功必须再跑一次 `query_result` 才落盘，下载名带 submit_id 前缀，得手动改成规范名：
+
+   ```bash
+   # ① 提交（--poll=60 等到出结果，输出里记下 submit_id）
+   dreamina text2image --prompt="..." --ratio=3:4 --resolution_type=2k \
+     --generate_num=1 --model_version=5.0 --poll=60
+
+   # ② 落盘到项目（下载名形如 <submit_id>_image_1.png）
+   dreamina query_result --submit_id=<id> --download_dir=03-资产
+
+   # ③ 改成规范名——阶段 5 的 @ImageN 就是靠文件名对职责的
+   ls -t 03-资产/*.png | head -1        # 确认最新那个是刚下的
+   mv "03-资产/<submit_id>_image_1.png" "03-资产/char_猫.png"
+   ```
+
+   视频同理（`--download_dir=05-成片`，改成 `clip_<NN>.mp4`）。**没落盘就不算"出图完成"**，别拿着 JSON 里的 `item_id` 当下游输入。
+8. **命名规范**：`char_<角色名>.png` / `scene_<场景名>.png` / `prop_<道具名>.png` / `first_<X>.png`。**不要为同一资产多留几张"备选"**——`ls` 一眼看不出哪张是定稿，阶段 5 传错素材是常事；确实要留就把废稿移到 `03-资产/_old/`。
 
 **⚠️ 本阶段不要一次把 N 段首帧图全做完**（这是最容易做错的地方）：本阶段只产出 **角色图 + 场景图 + 第 1 段首帧图**。第 2 段及以后的首帧，取决于第 1 段实际生成的画面——要么抽它末帧接力（`last_01.jpg`），要么照它实际构图改绘。提前做只会白花钱、还接不上。所以：
 
@@ -958,7 +1011,13 @@ bash 04-提示词/clip_01.cmd.sh
 
 执行规范：
 
-- `--poll=120` 提交并等待；超时仍 `querying` → 保存 `submit_id`，用 `query_result --submit_id=<id> --download_dir=05-成片` 持续跟进（不在项目目录内就补全成 `replicate/<项目>/05-成片`）
+- **`--poll` 只等待，不会把视频存到项目里**。无论 poll 返回 success 还是 querying，都要自己取回文件：
+  ```bash
+  dreamina query_result --submit_id=<id> --download_dir=05-成片   # 落成 <submit_id>_video_1.mp4
+  ls -t 05-成片/*.mp4 | head -1                                   # 确认是最新那个
+  mv "05-成片/<submit_id>_video_1.mp4" 05-成片/clip_01.mp4        # 改成规范名，拼接靠它排序
+  ```
+  超时仍 `querying` 就隔 30–60 秒重复 `query_result`，别重复提交（重复提交 = 重复扣费）
 - **只有 `gen_status=success` 才算完成**；`fail` 读 `fail_reason` 告知；`AigcComplianceConfirmationRequired` → 引导学员去即梦 Web 端完成该模型首次生成确认后重试
 - **生成成功后立刻回填「实际积分」**（这一步别省，它是报价的唯一校准来源）：从任务记录里读回这条的 `credit_count` 写进台账
 
@@ -968,7 +1027,7 @@ bash 04-提示词/clip_01.cmd.sh
 
   偏差超 30% → 顺手跑一次 `python scripts/quote.py --calibrate --ref <参考秒>` 固定单价，下次报价就不会再飘
 - 下载产物重命名 `clip_<NN>.mp4`，用 present_files **单独交付这一段**，紧跟一句：**"这段通过吗？通过我就申请下一段；不通过你说哪里不对，我改提示词重跑（重跑前会再申请一次授权）"**
-- 学员说画面通过 → **先做 5.5.1 音频验收**，音频也过才在 gate-log 写 `success`、抽本段末帧（`ffmpeg -y -sseof -0.15 -i 05-成片/clip_01.mp4 -frames:v 1 -q:v 2 03-资产/last_01.jpg`）并申请下一段；音频没过先按 5.5.1 改提示词重跑（重跑要重新授权）；画面说不通过 → 回阶段 4 改 `clip_NN.md`，改完**重新走 5.2 申请流程**
+- 学员说画面通过 → **先做 5.5.1 音频验收**，音频也过才在 gate-log 写 `success`、抽本段末帧（`bash scripts/ffx.sh ffmpeg -y -sseof -0.15 -i 05-成片/clip_01.mp4 -frames:v 1 -q:v 2 03-资产/last_01.jpg`）并申请下一段；音频没过先按 5.5.1 改提示词重跑（重跑要重新授权）；画面说不通过 → 回阶段 4 改 `clip_NN.md`，改完**重新走 5.2 申请流程**
 - **一段的完整闭环 = 画面通过 + 音频验收通过**，两者缺一都不算这段做完
 - **失败重试也是一次花钱**：重试前必须说明"这段失败了，重试会再扣约 XX 积分，可以吗"，不许默默重试（流程见 5.3.1）
 - 学员中途要停/要改方向 → 立刻停在当前段边界，已消耗的段记账保留，剩余段回到待申请
@@ -997,23 +1056,29 @@ bash 04-提示词/clip_01.cmd.sh
 #### 5.4 拼接成片（全部段都通过验收后才做）
 
 ```bash
-# 1) 按段号顺序写拼接清单（在项目目录内执行；用绝对路径，避免 concat 相对路径解析错）
-cd 05-成片 && : > concat.txt
-for f in $(ls clip_*.mp4 | sort); do printf "file '%s'\n" "$PWD/$f" >> concat.txt; done
+# 全部命令都在项目根执行（不要 cd 进 05-成片，否则 scripts/ 相对路径就断了）
+
+# 1) 按段号顺序写拼接清单：只写裸文件名
+#    · 别写 $PWD：Windows 原生 ffmpeg 不认 Git Bash 的 /c/... 或 /tmp/... 路径，
+#      会报 "Error opening input file concat.txt" 或干脆静默失败（实测）
+#    · 裸文件名是安全的：concat 按「清单文件所在目录」解析相对路径（实测），
+#      所以 concat.txt 放在 05-成片/ 里，文件名就写 clip_01.mp4
+: > 05-成片/concat.txt
+for f in $(ls 05-成片/clip_*.mp4 | sort); do printf "file '%s'\n" "$(basename "$f")" >> 05-成片/concat.txt; done
 
 # 2) 流拷贝拼接（各段编码参数一致时最快，音轨一并接上，不损画质）
-ffmpeg -y -f concat -safe 0 -i concat.txt -c copy "成片_无BGM.mp4"
+bash scripts/ffx.sh ffmpeg -y -f concat -safe 0 -i 05-成片/concat.txt -c copy "05-成片/成片_无BGM.mp4"
 
-# 3) 校验：总时长 ≈ 各段之和（误差 ≤0.3s），并确认音轨还在
-ffprobe -v error -show_entries format=duration -show_entries stream=codec_type -of csv=p=0 "成片_无BGM.mp4"
+# 3) 校验：总时长 ≈ 各段之和（误差 ≤0.3s），并确认音轨还在（期望看到 video 与 audio 两行）
+bash scripts/ffx.sh ffprobe -v error -show_entries format=duration -show_entries stream=codec_type -of csv=p=0 "05-成片/成片_无BGM.mp4"
 ```
 
 - **降级重编码**：段与段之间换过模型/画幅，或拼完出现花屏、时长错乱、音画不同步 → 改用重编码归一：
 
   ```bash
-  ffmpeg -y -f concat -safe 0 -i concat.txt \
+  bash scripts/ffx.sh ffmpeg -y -f concat -safe 0 -i 05-成片/concat.txt \
     -vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,fps=30" \
-    -c:v libx264 -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k "成片_无BGM.mp4"
+    -c:v libx264 -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k "05-成片/成片_无BGM.mp4"
   ```
 
   注意：重编码会重新压制画面，只在流拷贝失败时才用。
@@ -1033,11 +1098,11 @@ ffprobe -v error -show_entries format=duration -show_entries stream=codec_type -
 
 ```bash
 # 1) 有没有音轨（期望两行：h264,video / aac,audio）
-ffprobe -v error -show_entries stream=codec_type,codec_name -of csv=p=0 05-成片/clip_01.mp4
+bash scripts/ffx.sh ffprobe -v error -show_entries stream=codec_type,codec_name -of csv=p=0 05-成片/clip_01.mp4
 
 # 2) 抽出音轨，交给平台的音频转写能力（秒级返回）
 mkdir -p 05-成片/_qc
-ffmpeg -y -v error -i 05-成片/clip_01.mp4 -vn -ar 16000 -ac 1 "05-成片/_qc/clip_01.wav"
+bash scripts/ffx.sh ffmpeg -y -v error -i 05-成片/clip_01.mp4 -vn -ar 16000 -ac 1 "05-成片/_qc/clip_01.wav"
 ```
 
 第 2 步的转写**用 WorkBuddy 自带的音频转写工具**（直接给 wav 路径，几秒出结果）。⚠️ **不要用本地 whisper 跑这种十几秒的短音频**——实测一段 8 秒音轨要几分钟，整轮验收能耗掉半小时；本地 whisper 只在需要逐字时间码（阶段 1 拿原片转写稿）时才用。
@@ -1089,7 +1154,7 @@ python scripts/dub.py --video 05-成片/clip_01.mp4 \
 
 **第一步——写 BGM 适配单**（`06-BGM/bgm-spec.md`），全部依据拆解证据：
 - 风格与情绪：来自阶段 1 拆解的声音层记录（原片 BGM 风格、情绪、节奏快慢）
-- 时长：用 `ffprobe -v error -show_entries format=duration -of csv=p=0 05-成片/成片_无BGM.mp4` 读**成片实际总长**，不要自己把各段时长相加（拼接/重编码后会差几百毫秒）
+- 时长：用 `bash scripts/ffx.sh ffprobe -v error -show_entries format=duration -of csv=p=0 05-成片/成片_无BGM.mp4` 读**成片实际总长**，不要自己把各段时长相加（拼接/重编码后会差几百毫秒）
 - 情绪曲线与卡点：对照镜头段级时间轴标注——钩子出现在第几秒、转折在第几秒、结尾落在第几秒；BGM 的重音/渐强位置尽量对齐这些秒数
 - 结构：前奏 ≤2 秒（短视频黄金 3 秒不能被空拍浪费）、副歌/高潮对齐转折点、结尾淡出 1 秒
 - 人声共存策略：有配音/对白时 BGM 音量压低（建议 -18dB 左右），纯同期声时可稍高

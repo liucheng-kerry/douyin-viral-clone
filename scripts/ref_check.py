@@ -318,6 +318,13 @@ def check(args):
         errs.append('正文出现致哑表述：%s——模型会严格执行，成片就没有台词了'
                     % '、'.join(sorted(set(mute))))
 
+    # 7.5) 风格句占位符：style-anchor.md 还没补画风词就照抄，等于让模型自由发挥
+    for ph in ('待补画风', '<画风>', '画风待定'):
+        if ph in body:
+            errs.append('正文里有「%s」占位符——说明 style-anchor.md 的画风词还没补，别把占位符抄进提示词：'
+                        '回阶段 1.6 带 --style-word 重跑一次，再复制风格句' % ph)
+            break
+
     # 8) 素材数量与正文长度
     if img_n > 30:
         errs.append('图片 %d 张，超过 seedance2.5 的 30 张上限' % img_n)

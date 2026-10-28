@@ -15,10 +15,15 @@ URL="${1:-}"
 OUT="${2:-./01-拆解}"
 COOKIES="${COOKIES_FROM:-}"
 
-if [ -z "$URL" ]; then
-  echo "用法: bash scripts/fetch-video.sh \"<视频链接>\" [输出目录]" >&2
-  exit 1
-fi
+case "$URL" in
+  -h|--help|help|"")
+    sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+    echo
+    echo "环境变量: YTDLP_PROXY=http://127.0.0.1:7892（网络受限时）/ COOKIES_FROM=chrome（抖音、小红书要登录态）"
+    [ -z "$URL" ] && exit 1
+    exit 0
+    ;;
+esac
 
 # 兼容用户从 App 复制的分享文案：从文本里抠出第一个 http(s) 链接
 if ! printf '%s' "$URL" | grep -qE '^https?://'; then

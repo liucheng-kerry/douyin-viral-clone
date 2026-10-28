@@ -102,13 +102,27 @@ dreamina login checklogin --device_code=<上一步的 device_code> --poll=30
 
 > 登录成功 ≠ 能开工：`user_credit` 里还有两个字段要看——**余额**（一支 15 秒 720p 成片约 300 积分）和 **`vip_level`**（`seedance2.5` 标注 VIP 限定）。`check-env.sh` 会把这两项一起打出来。
 
-**第 3 步：环境自检**（缺什么会直接告诉你装什么）
+**第 3 步：建项目目录，把脚本入口接进去**（不做这一步，后面每条 `scripts/xxx` 都会报 `No such file or directory`）
+
+脚本住在技能目录里，不在你的项目里。所以每个项目开头先接一次：
 
 ```bash
-bash ~/.workbuddy/skills/douyin-viral-clone/scripts/check-env.sh
+SKILL_DIR="$HOME/.workbuddy/skills/douyin-viral-clone"
+mkdir -p replicate/2026-01-01-my-clip && cd replicate/2026-01-01-my-clip
+ln -s "$SKILL_DIR/scripts"  scripts  2>/dev/null || cp -r "$SKILL_DIR/scripts"  scripts
+ln -s "$SKILL_DIR/vendored" vendored 2>/dev/null || cp -r "$SKILL_DIR/vendored" vendored
+ls scripts/check-env.sh     # 能看到文件才算接好
 ```
 
-**第 4 步：开始用**——在 WorkBuddy 里说：
+Windows 上 `ln -s` 需要开发者模式，失败会自动回退成复制——复制版不跟技能更新，升级技能后重跑这两行。
+
+**第 4 步：环境自检**（缺什么会直接告诉你装什么）
+
+```bash
+bash scripts/check-env.sh
+```
+
+**第 5 步：开始用**——在 WorkBuddy 里说：
 
 > 复刻这个爆款：<视频链接或本地文件路径>，主角换成 <你的选题>
 
@@ -119,12 +133,21 @@ bash ~/.workbuddy/skills/douyin-viral-clone/scripts/check-env.sh
 | [WorkBuddy](https://www.workbuddy.cn) | 运行环境（Skill 工具调用、多模态读图） | 必需 |
 | [即梦 CLI (dreamina)](https://jimeng.jianying.com/cli) | 生图生视频通道，需即梦账号授权 | 必需（阶段 3/5） |
 | edge-tts | 兜底配音（模型没出人声时才用）；常规流程靠模型原生音轨 | 可选（阶段 5.5.2） |
-| ffmpeg + ffprobe | 抽帧、转写喂音、混音合成 | 必需 |
+| ffmpeg + ffprobe | 抽帧、转写喂音、混音合成 | 必需（**Windows 用 `scripts/ffx.sh` 调用，别敲裸 `ffmpeg`**） |
 | openai-whisper | 口播转写 | 必需 |
 | yt-dlp | 链接下载兜底通道 | 可选 |
 | 技能 `ai-drama-reference-art` | 角色/场景参考图的**写法**规范（影视锚定、DNA 物件、MATERIAL TRUTH 等；本技能只取写法，不取它的 4 面板/9 宫格排版） | 可选（未装时按 SKILL.md 内置兜底写法） |
 
 > 阶段 ①.6 的风格锚定脚本（`scripts/style_anchor.py`）**不引入任何新依赖**：只用 Python 标准库 + 已装的 ffmpeg/ffprobe。
+
+> **Windows 的 ffmpeg 有个静默陷阱**：winget 装的 `AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe` 是 0 字节别名壳，跑 `ffmpeg ...` 会 **exit 0 却不产出任何文件**（不报错，实测）。拼接、抽末帧、抽音轨全靠它，静默失败等于整套流程空跑。所以手跑命令一律走包装器——它会淘汰跑不起来的壳，回落到真实 exe；找不到时退出码 3 并给安装命令：
+>
+> ```bash
+> bash scripts/ffx.sh ffmpeg  -y -i a.mp4 ...
+> bash scripts/ffx.sh ffprobe -v error -show_entries format=duration -of csv=p=0 a.mp4
+> ```
+>
+> macOS/Linux 上它只是一层透传，没有副作用。
 
 ## 使用
 
