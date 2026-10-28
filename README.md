@@ -35,12 +35,22 @@ douyin-viral-clone/
 
 ## 安装
 
-复制到 WorkBuddy 技能目录即可，**自包含、无需安装其他技能**：
+**方式一：npx 一条命令**（需要 Node.js 22.20+，会交互式选择安装到哪个 agent；`-g` 装全局）：
+
+```bash
+npx skills add https://github.com/liucheng-kerry/douyin-viral-clone -g
+```
+
+> WorkBuddy 用户注意：skills CLI 的 agent 列表暂不含 WorkBuddy。WorkBuddy 学员请用方式二，或用方式一装到任意 agent 后把整个 `douyin-viral-clone` 文件夹复制到 `~/.workbuddy/skills/` 下。
+
+**方式二：git clone（WorkBuddy 推荐方式）**：
 
 ```bash
 # 用户级（所有项目可用）
 git clone https://github.com/liucheng-kerry/douyin-viral-clone.git "$HOME/.workbuddy/skills/douyin-viral-clone"
 ```
+
+装完重启 WorkBuddy（或新开会话）即可生效，本技能自包含、无需安装其他技能。
 
 ## 依赖
 
@@ -66,3 +76,12 @@ git clone https://github.com/liucheng-kerry/douyin-viral-clone.git "$HOME/.workb
 - **保守执行**：生成操作消耗即梦积分，每个付费动作前报余额与预计消耗
 - **成功判定严格**：`gen_status=success` 才算完成；中断后凭 `list_task` 找回，避免重复扣积分
 - **质量来自拆解**：图片和视频的质量上限由逐帧拆解的颗粒度决定——每个物体、景别、机位、运镜、构图都要落到提示词里
+
+## 来源声明（Credits）
+
+本仓库 `vendored/` 目录下的两个方法论技能——
+
+- `vendored/yyl-benchmark-breakdown/`（对标拆解方法论）
+- `vendored/yyl-video-prompt/`（导演式 AI 视频提示词方法论）
+
+来自 **「鱼亦乐」的方法论技能包**，为一比一完整副本（未做任何内容修改），在此致谢。其版权归原作者所有，本仓库收录仅用于教学复刻工作流的内部衔接。若你是原作者并希望移除或更改署名方式，请提 Issue 或联系仓库所有者，我们会立即处理。`vendored/` 之外的其余部分（六阶段编排、逐帧拆解规范、即梦 CLI 通道、脚本）为本仓库原创。
