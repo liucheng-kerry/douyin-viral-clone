@@ -13,7 +13,7 @@
 #   sheet_XX.jpg    contact sheet 拼图（全局概览用，不替代逐帧分析）
 #   manifest.txt    本次抓到了什么，给拆解阶段先读
 #
-# 环境变量: WHISPER_MODEL(默认 medium) / SCENE_THRESHOLD(默认 0.35) / SAMPLE_FPS(默认 1，即逐秒逐帧)
+# 环境变量: WHISPER_MODEL(默认 medium) / SCENE_THRESHOLD(默认 0.25) / SAMPLE_FPS(默认 1，即逐秒逐帧)
 
 set -euo pipefail
 

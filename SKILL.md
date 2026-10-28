@@ -1210,6 +1210,9 @@ python scripts/dub.py --video 05-成片/clip_01.mp4 \
 
 - `references/pipeline-spec.md` —— 各阶段输入/输出契约与示例文件命名，衔接细节拿不准时读它。
 - `scripts/check-env.sh` —— ★ 阶段 0 环境自检：缺什么、怎么装，逐项打印。
+- `scripts/ffx.sh` —— ★ **所有手跑 ffmpeg/ffprobe 命令都必须走它**：Windows 上 winget 的 `Links\ffmpeg.exe` 是 0 字节别名壳，裸跑会**退出码 0 但不产出文件**；它用 `-version` 探测淘汰壳、回落到真 exe，找不到时退出码 3 并给安装命令。用法 `bash scripts/ffx.sh ffmpeg -y -i a.mp4 ...`（macOS/Linux 上只是透传）。
+- `scripts/fetch-video.sh` —— 阶段 1 链接下载通道（yt-dlp，不依赖 Docker/WSL）：`bash scripts/fetch-video.sh "<链接>" "01-拆解"`；抖音/小红书要登录态时配合 `COOKIES_FROM=chrome`，网络受限时 `YTDLP_PROXY=http://127.0.0.1:7892`。
+- `scripts/prepare-local-video.sh` —— 阶段 1 本地文件通道：复制原片进 `01-拆解/video/`、抽每秒一帧、抽音轨并 whisper 转写（首次跑会下载 `medium` 模型约 1.5GB；想先验链路用 `WHISPER_MODEL=tiny`）。
 - `scripts/style_anchor.py` —— ★ 阶段 1.6 风格锚定：抽帧量化亮度/对比度/饱和度/色温/主色板/锐度，产出 `style-anchor.md`（风格句+负向词+质检三问）与 `style-swatch.svg`（色板可视化）；带 `--compare <生成图> --qc-only` 时输出五项差值的 `qc-report.md` 对照质检报告（阶段 3 场景定场图与首帧图都用）；用 `--style-word` 重跑时会**保留已填写过的画风判定行**，不会冲掉人工结果。零第三方依赖。
 - `scripts/dialogue_check.py` —— ★ 阶段 2 台词对照机械校验：查句数是否与原片一致、字数偏差是否超 ±30%、单句是否超 12 字、时间码是否递增/粘连、判定列是否合法、原句是否真出自 `audio.txt`（防凭印象编原句）、A/B 档是否偷偷出现 `⚠️`。**只查形式，语义必须人读**；有 error 时退出码 1。零第三方依赖。
 - `scripts/split-source.sh` —— ★ 阶段 5 前的动作参考片段切分：按分段表从原片切出 `src_clips/src_NN.mp4`（流拷贝优先，时长偏差大才重编码），产出 `src-manifest.txt`。**全能参考的 `--video` 素材就靠它**；只切本段，单条须 2–30s、合计 ≤30s。
