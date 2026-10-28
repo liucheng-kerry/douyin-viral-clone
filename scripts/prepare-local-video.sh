@@ -71,6 +71,18 @@ mkdir -p "$OUT"
 echo "→ ffmpeg: $FFMPEG"
 echo "→ 输出目录: $OUT"
 
+# ---- 0. 原片落位: 01-拆解/video/ ----
+# 阶段 1.6（风格锚定）和阶段 3（同秒帧比对）都从 video/ 取源；
+# fetch-video.sh 天然产出到这里，但用户给本地文件时不会——不复制过去，后续命令就找不到原片。
+mkdir -p "$OUT/video"
+VIDEO_NAME=$(basename "$VIDEO")
+if [ -f "$OUT/video/$VIDEO_NAME" ]; then
+  echo "✓ 原片已在 video/ 下（$VIDEO_NAME）"
+else
+  cp "$VIDEO" "$OUT/video/$VIDEO_NAME"
+  echo "✓ 原片已复制到 $OUT/video/$VIDEO_NAME"
+fi
+
 # ---- 1. 元信息 ----
 "$FFPROBE" -v error -show_entries format=duration,size,bit_rate \
   -show_entries stream=codec_name,width,height,r_frame_rate \
@@ -121,6 +133,7 @@ echo "✓ contact sheet ${SHEET_N} 张（拆解时用 Read 看图）"
 # ---- 6. manifest ----
 {
   echo "来源: 本地文件 $VIDEO"
+  echo "原片: video/$VIDEO_NAME（阶段 1.6 风格锚 / 阶段 3 同秒帧比对都从这里取）"
   echo "时长: ${DUR}s"
   echo "元信息: metadata.json"
   [ -f "$OUT/audio.wav" ]  && echo "音轨: audio.wav"

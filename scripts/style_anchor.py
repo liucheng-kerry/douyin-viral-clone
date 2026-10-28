@@ -419,8 +419,13 @@ def compare_report(base, other, base_name, other_name):
                  "生成图更亮" if d > 0 else ("生成图更暗" if d < 0 else "一致")))
     ratio = (other["edge"] / base["edge"]) if base["edge"] else 1.0
     ok = 0.7 <= ratio <= 1.4
-    rows.append(("锐度比", "%.2fx" % ratio, "✅ 同档" if ok else "⚠️ 不同档",
-                 "生成图更锐/颗粒更重" if ratio > 1 else "生成图更糊/更干净"))
+    if 0.95 <= ratio <= 1.05:
+        rnote = "基本一致"
+    elif ratio > 1:
+        rnote = "生成图更锐/颗粒更重"
+    else:
+        rnote = "生成图更糊/更干净"
+    rows.append(("锐度比", "%.2fx" % ratio, "✅ 同档" if ok else "⚠️ 不同档", rnote))
     bad = sum(1 for r in rows if r[2].startswith("❌"))
     warn = sum(1 for r in rows if r[2].startswith("⚠️"))
     if bad:
@@ -475,6 +480,29 @@ def write_svg(path, colors, w_total=680, h=140):
            '%s</svg>' % (w_total, h, w_total, h, "".join(parts)))
     with open(path, "w", encoding="utf-8") as f:
         f.write(svg)
+
+
+def load_filled_rows(path):
+    """重跑时保留人工填过的画风判定行（否则 --style-word 重跑会把上一轮填的表冲掉）。"""
+    keep = {}
+    if not os.path.isfile(path):
+        return keep
+    keys = ("画风", "镜头质感", "光源", "与数值是否矛盾")
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                s = line.strip()
+                if not s.startswith("|"):
+                    continue
+                parts = s.split("|")
+                if len(parts) < 3:
+                    continue
+                k = parts[1].strip()
+                if k in keys and "⬜" not in s and s not in keep.values():
+                    keep[k] = s
+    except OSError:
+        pass
+    return keep
 
 
 def main():
@@ -559,10 +587,18 @@ def main():
     lines.append("")
     lines.append("## 五、画风判定（agent 必填：用 ViewImage 看帧后补）\n")
     lines.append("| 判定项 | 结论 |\n|---|---|")
-    lines.append("| 画风 | ⬜ 待填（实拍手机随手拍 / 实拍精致打光 / 3D 渲染 / 2D 动画 / 黏土定格 / 拼贴 / 混合） |")
-    lines.append("| 镜头质感 | ⬜ 待填（手机广角直拍 / 单反浅景深 / 长焦压缩 / 微距） |")
-    lines.append("| 光源 | ⬜ 待填（自然日光 / 夜市暖光 / 室内顶光 / 霓虹混色 / 逆光轮廓 / 屏幕光） |")
-    lines.append("| 与数值是否矛盾 | ⬜ 待填（矛盾时以肉眼判断为准，并说明原因） |")
+    filled = load_filled_rows(md)
+    rows = [
+        ("画风", "| 画风 | ⬜ 待填（实拍手机随手拍 / 实拍精致打光 / 3D 渲染 / 2D 动画 / 黏土定格 / 拼贴 / 混合） |"),
+        ("镜头质感", "| 镜头质感 | ⬜ 待填（手机广角直拍 / 单反浅景深 / 长焦压缩 / 微距） |"),
+        ("光源", "| 光源 | ⬜ 待填（自然日光 / 夜市暖光 / 室内顶光 / 霓虹混色 / 逆光轮廓 / 屏幕光） |"),
+        ("与数值是否矛盾", "| 与数值是否矛盾 | ⬜ 待填（矛盾时以肉眼判断为准，并说明原因） |"),
+    ]
+    for k, default in rows:
+        lines.append(filled.get(k, default))
+    if filled:
+        lines.append("")
+        lines.append("> 已保留上一轮填写的 %d 行画风判定（重跑不会冲掉）。" % len(filled))
     lines.append("")
     lines.append("## 六、用法（阶段 3/4 的硬规则）\n")
     lines.append("1. **阶段 3 每一张图片提示词** = 内容描述 + `风格句` + `避免：负向词`，三段缺一不可。")

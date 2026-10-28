@@ -35,7 +35,8 @@ dreamina user_credit      # 确认登录态 + 报积分余额
 ### 改图 image2image（★ 风格一致的首选通道）
 
 ```bash
-dreamina image2image --images="01-拆解/frame_006.jpg,03-资产/char_主角.png" \
+# 帧名换算：frame_001 = 第 0 秒，frame_002 = 第 1 秒……即 frame_(起始秒 + 1)
+dreamina image2image --images="01-拆解/frame_001.jpg,03-资产/char_主角.png" \
   --prompt="保留图1的构图/景别/机位/光线/色调与背景，只把主体替换为图2的角色，姿态与占位不变，其余一切不变。<风格句> 避免：<负向词>" \
   --ratio=9:16 --resolution_type=2k --poll=60
 ```
@@ -57,10 +58,6 @@ dreamina text2image --prompt="..." --ratio=9:16 --resolution_type=2k --generate_
 - 模型与分辨率组合：3.0/3.1 → 1k/2k；4.0/4.1/4.5/4.6/4.7/5.0 → 2k/4k；5.0Pro → 1.5k/2k/4k。
 - `--generate_num` 1–10；`--poll=N` 提交后顺带等 N 秒。
 - 竖屏资产用 `--ratio=9:16`，横屏用 16:9。
-
-### 改图 image2image
-
-用于衔接帧改绘（「把图片1 改为……状态」）和主角替换类改图。参数以 `-h` 为准。
 
 ### 生视频（全部异步：提交 → submit_id → query_result）
 
