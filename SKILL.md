@@ -8,7 +8,9 @@ agent_created: true
 
 ## Overview
 
-把一个对标爆款链接变成一套自己的 AI 视频成片：先拆解对标（结构/口播/画面/节奏），与学员确认复刻想法后改写成自己的脚本，再产出图片资产（角色/场景参考图）和逐段视频提示词，最后用**即梦官方 CLI（dreamina）**逐段生图生视频。本技能是**编排层**：各环节调用已安装的专项技能，不重复造轮子。
+把一个对标爆款链接变成一套自己的 AI 视频成片：先拆解对标（结构/口播/画面/节奏），与学员确认复刻想法后改写成自己的脚本，再产出图片资产（角色/场景参考图）和逐段视频提示词，最后用**即梦官方 CLI（dreamina）**逐段生图生视频，收尾做 BGM 适配合成。
+
+**本技能自包含**：两个方法论技能已一比一内嵌在 `vendored/` 下（拆解方法论 `vendored/yyl-benchmark-breakdown/`、视频提示词方法论 `vendored/yyl-video-prompt/`，内容与原版逐字节一致）。执行阶段 1/4 时**先读对应内嵌 SKILL.md，再按其工作流在本项目内执行**，不要试图把它们当独立技能加载。唯一的外部可选项是 `ai-drama-reference-art`（参考图提示词，未安装时按阶段 3 的兜底写法）。
 
 **生成通道**：所有生图生视频都走 `dreamina` CLI（学员的即梦账号积分），规范见 `references/dreamina-cli.md`——前置检查、费用确认、命令速查、结果判定与容错都在那里，拿不准先读它。CLI 不可用时才回退 WorkBuddy 内置 ImageGen/VideoGen。
 
@@ -19,7 +21,7 @@ agent_created: true
 
 ## 项目目录
 
-开工即在工作区创建 `replicate/<日期>-<标题slug>/`，固定五个子目录：
+开工即在工作区创建 `replicate/<日期>-<标题slug>/`，固定六个子目录：
 
 ```
 replicate/2026-10-27-xxx/
@@ -33,16 +35,16 @@ replicate/2026-10-27-xxx/
 
 ## 工作流（五阶段）
 
-### 阶段 1：对标拆解（方法论权威 = `yyl-benchmark-breakdown`）
+### 阶段 1：对标拆解（方法论权威 = 内嵌的 `yyl-benchmark-breakdown`）
 
-调用 Skill 工具加载 `yyl-benchmark-breakdown`，**阶段 1 的识别、取证、分析、输出全部遵循它的规范**，不许自创拆解格式：
+本技能在 `vendored/yyl-benchmark-breakdown/` 内嵌了 `yyl-benchmark-breakdown` 的**一比一完整副本**（含 SKILL.md、fetch-playbook、visual-framework、output-template、全部脚本）。它不作为独立技能加载，而是**先读它的 SKILL.md，再按其工作流在本项目内执行**——阶段 1 的识别、取证、分析、输出全部遵循它的规范，不许自创拆解格式：
 
-1. **先跑它的前置清单** `bash <yyl目录>/scripts/check-deps.sh`；缺依赖按其 INSTALL 指引补齐。
-2. **按它的 fetch-playbook 识别平台与粒度**（单条/账号），跑它的 `prepare-assets.sh` 准备证据包。
-3. **取数回退按它的四级回退链**（本地下载 API → TikHub → Jina Reader → 引导粘贴）。**本技能的证据通道作兜底**：当 yyl 依赖的 Docker 本地 API 不可用时，用下面的 fetch-video.sh / 本地视频通道取证，产出的证据照样交给 yyl 的拆解框架分析。
-4. **拆解分析按它的框架**：通用四层 + 视觉七维（`references/visual-framework.md`）+ 平台特化，产出它的**三件套**（可复用爆款公式 / 画面+口播时间轴对齐拆解 / 人设与内容定位），报告末尾必须附完整转写稿。
+1. **先读 `vendored/yyl-benchmark-breakdown/SKILL.md`**，再跑它的前置清单 `bash vendored/yyl-benchmark-breakdown/scripts/check-deps.sh`；缺依赖按其 `INSTALL.md` 指引补齐。
+2. **按它的 `references/fetch-playbook.md` 识别平台与粒度**（单条/账号），跑 `bash vendored/yyl-benchmark-breakdown/scripts/prepare-assets.sh` 准备证据包。
+3. **取数回退按它的四级回退链**（本地下载 API → TikHub → Jina Reader → 引导粘贴）。**本技能的证据通道作兜底**：当它依赖的 Docker 本地 API 不可用时，用下面的 fetch-video.sh / 本地视频通道取证，产出的证据照样交给它的拆解框架分析。
+4. **拆解分析按它的框架**：通用四层 + 视觉七维（`vendored/yyl-benchmark-breakdown/references/visual-framework.md`）+ 平台特化，产出它的**三件套**（可复用爆款公式 / 画面+口播时间轴对齐拆解 / 人设与内容定位，模板见其 `references/output-template.md`），报告末尾必须附完整转写稿。
 5. **按它的约定存档**：`benchmarks/<平台>-<账号名>/<日期>-<标题slug>.md`，每次都存。
-6. 在 yyl 三件套之外，**必须追加本技能强制的逐帧拆解表**（见下），两者合起来才是完整拆解产出。
+6. 在它的三件套之外，**必须追加本技能强制的逐帧拆解表**（见下），两者合起来才是完整拆解产出。
 
 **证据获取兜底通道（yyl 取数失败时用，不依赖 Docker）**：
 
@@ -113,7 +115,7 @@ contact sheet 只用来建立整体印象，**正式拆解必须逐张分析 `fr
 
 ### 阶段 3：图片资产（即梦 CLI 生图）
 
-调用 Skill 工具加载 `ai-drama-reference-art`，按其规范为脚本中每个角色和场景编写参考图提示词：
+参考图提示词：已安装 `ai-drama-reference-art` 时调用它按其规范编写；未安装（含学员环境）时按下述规则自行编写——角色/场景描述遵循"锁定什么、不用什么"原则，参考图提示词正文要能直接回答视频提示词里"图片N锁定什么"：
 
 - 角色图 = 4 面板 character sheet（正面脸/侧面脸/正面身无脸/背面身，棚拍规则）
 - 场景图 = 9 宫格多角度
@@ -135,11 +137,11 @@ contact sheet 只用来建立整体印象，**正式拆解必须逐张分析 `fr
 
 CLI 不可用时回退 WorkBuddy 内置 ImageGen，并告知学员通道变更。
 
-### 阶段 4：视频提示词（严格按 yyl-video-prompt 方法论）
+### 阶段 4：视频提示词（严格按内嵌的 `yyl-video-prompt` 方法论）
 
-**唯一权威写法是 `yyl-video-prompt` 技能**，必须走完它的完整工作流，不许跳步、不许用自己的简化格式替代：
+本技能在 `vendored/yyl-video-prompt/` 内嵌了 `yyl-video-prompt` 的**一比一完整副本**（SKILL.md、REFERENCE.md、modes/、examples/、references/、prompt_builder.py）。**唯一权威写法是它**，必须走完它的完整工作流，不许跳步、不许用自己的简化格式替代：
 
-1. 调用 Skill 工具加载 `yyl-video-prompt`，**先读档位文件再动笔**：抖音节奏 → `modes/short-video.md` + `examples/short-video.md`（标杆：《丹眉》一镜到底、赛博原子多分镜）；多句对白+情绪转折+对手戏且同场景 → `modes/cinematic-drama.md` + `examples/cinematic-drama.md`。拿不准就短视频档，并在确认消息里说明可切换。
+1. **先读 `vendored/yyl-video-prompt/SKILL.md`**，再读档位文件动笔：抖音节奏 → `vendored/yyl-video-prompt/modes/short-video.md` + `examples/short-video.md`（标杆：《丹眉》一镜到底、赛博原子多分镜）；多句对白+情绪转折+对手戏且同场景 → `modes/cinematic-drama.md` + `examples/cinematic-drama.md`。拿不准就短视频档，并在确认消息里说明可切换。
 2. 按 yyl 五步走：**选档位 → 定三件事 → 拆段 → 导演判断 → 逐段写 → 自检**。
    - 定三件事：目标工具 = 即梦 CLI（单段上限 8–15s，视模型）；影像基调照拆解表（写实 CG/实拍感/动画，实拍感不写"电影感/4K"）；参考素材 = 阶段 3 首帧图，每张写唯一任务。
    - 拆段依据 = 阶段 1 的**镜头段级时间轴拆解表**：一个镜头段 ≈ 一个生成段；镜头切点就是分段点。
@@ -162,8 +164,8 @@ CLI 不可用时回退 WorkBuddy 内置 ImageGen，并告知学员通道变更�
    - 情绪写成可见动作；对白嵌在对应时间码里；每个动作写起因和收尾、受力有支撑
    - 声音 = 环境声底 + 事件音（写到具体秒），默认无 BGM
    - 硬约束：正面句写死主体占比、空间逻辑、动作顺序；否定项只针对已知失败（如"不得四足着地"仅当主体是直立动物）
-5. 写完跑双检：`python3 <yyl-video-prompt目录>/scripts/prompt_builder.py --validate <文件>` + yyl 共用自检清单逐项打勾，全过才算完成。
-6. 涉及 Seedance 2.5 深化（情绪物理分解、全身动力学链、四层画面枚举）时再加载 `seedance-clip-writer`，但结构仍以 yyl 为准。
+5. 写完跑双检：`python3 vendored/yyl-video-prompt/scripts/prompt_builder.py --validate <文件>` + 它的共用自检清单（在其 SKILL.md「共用自检」节）逐项打勾，全过才算完成。
+6. 涉及 Seedance 2.5 深化（情绪物理分解、全身动力学链、四层画面枚举）时再加载 `seedance-clip-writer`，但结构仍以内嵌的 yyl-video-prompt 为准。
 
 每段必须标注生成模式（阶段 5 按它映射 Dreamina 命令，映射表见 `references/dreamina-cli.md`）。首段用对应首帧图，后续段首帧=上一段段尾状态（可用 `dreamina image2image` 改绘）。
 
@@ -233,3 +235,5 @@ CLI 不可用时回退 WorkBuddy 内置 ImageGen，并告知学员通道变更�
 
 - `references/pipeline-spec.md` —— 各阶段输入/输出契约与示例文件命名，衔接细节拿不准时读它。
 - `references/dreamina-cli.md` —— ★ 即梦 CLI 生图生视频通道规范：前置检查、费用确认、命令速查、生成模式→命令映射、结果判定与容错。执行阶段 3/5 前先读它。
+- `vendored/yyl-benchmark-breakdown/` —— 内嵌拆解方法论（一比一副本）：SKILL.md 入口，fetch-playbook（取数回退）、visual-framework（视觉七维）、output-template（三件套模板）、scripts/（check-deps / prepare-assets / bootstrap-local-apis）。阶段 1 前读。
+- `vendored/yyl-video-prompt/` —— 内嵌视频提示词方法论（一比一副本）：SKILL.md 入口，modes/（两档写法）、examples/（标杆示例）、references/（镜头语言速查/工具适配）、scripts/prompt_builder.py（结构校验）。阶段 4 前读。

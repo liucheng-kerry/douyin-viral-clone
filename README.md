@@ -25,6 +25,9 @@ douyin-viral-clone/
 ├── references/
 │   ├── pipeline-spec.md        # 各阶段输入/输出契约与文件命名
 │   └── dreamina-cli.md         # 即梦 CLI 生图生视频通道规范
+├── vendored/
+│   ├── yyl-benchmark-breakdown/  # 内嵌拆解方法论（一比一副本，阶段 1 用）
+│   └── yyl-video-prompt/         # 内嵌视频提示词方法论（一比一副本，阶段 4 用）
 └── scripts/
     ├── fetch-video.sh          # 链接下载兜底通道（yt-dlp）
     └── prepare-local-video.sh  # 本地视频证据包（转写+逐帧抽帧+contact sheet）
@@ -32,11 +35,11 @@ douyin-viral-clone/
 
 ## 安装
 
-复制到 WorkBuddy 技能目录即可：
+复制到 WorkBuddy 技能目录即可，**自包含、无需安装其他技能**：
 
 ```bash
 # 用户级（所有项目可用）
-git clone https://github.com/<你的用户名>/douyin-viral-clone.git "$HOME/.workbuddy/skills/douyin-viral-clone"
+git clone https://github.com/liucheng-kerry/douyin-viral-clone.git "$HOME/.workbuddy/skills/douyin-viral-clone"
 ```
 
 ## 依赖
@@ -48,7 +51,7 @@ git clone https://github.com/<你的用户名>/douyin-viral-clone.git "$HOME/.wo
 | ffmpeg + ffprobe | 抽帧、转写喂音、混音合成 | 必需 |
 | openai-whisper | 口播转写 | 必需 |
 | yt-dlp | 链接下载兜底通道 | 可选 |
-| 配套技能 `yyl-benchmark-breakdown` / `yyl-video-prompt` / `ai-drama-reference-art` | 拆解方法论 / 提示词方法论 / 参考图提示词 | 必需 |
+| 技能 `ai-drama-reference-art` | 角色四面板/场景九宫格提示词规范 | 可选（未装时按 SKILL.md 内置兜底写法） |
 
 ## 使用
 
