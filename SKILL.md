@@ -136,6 +136,8 @@ python scripts/style_anchor.py --video "replicate/<日期>-<slug>/01-拆解/vide
 
 统计项与判读口径：平均亮度（低调/中间调/高调）、对比度（亮度标准差）、平均饱和度、色温（R−B）、锐度与颗粒（邻域亮度差）、高光溢出比与暗部占比、主色相分布、Top6 主色板（hex + 中文名 + 占比）。
 
+同一个脚本还能做**对照质检**（阶段 3 每个样张都要跑）：`--compare <生成图> --qc-only` 会输出五项差值报告，把"感觉不像"变成"色温偏冷 26、饱和偏高 0.15"这种可执行的修正方向。用法见阶段 3.4。
+
 **脚本只给数值事实，画风定性必须你补**——用 ViewImage 看 2–3 张 `frame_*.jpg`，把这三行填回 `style-anchor.md` 的「五、画风判定」表（不许留 ⬜）：
 
 | 判定项 | 只能选一个 |
@@ -230,10 +232,21 @@ dreamina text2image --prompt="<内容描述 + 风格句 + 避免：负向词>" -
 
 1. 跑 `dreamina user_credit` 报余额 + 预计消耗（约 5–10 credits/张，视频另算），并说明「先生成 1 张风格样张，确认后再生剩下的 N 张」。
 2. 学员同意后先做**第 1 段首帧图**这一张样张（优先路径 A，用该段起始秒的原片帧做底图）。
-3. **样张必须做同秒比对**：用 ViewImage 同时看 `03-资产/first_A.png` 与 `01-拆解/frame_<秒号>.jpg`（`frame_001` = 第 0 秒，依次 +1），回答风格质检三问——
+3. **样张必须做同秒比对（肉眼 + 数字双检）**：用 ViewImage 同时看 `03-资产/first_A.png` 与 `01-拆解/frame_<秒号>.jpg`（`frame_001` = 第 0 秒，依次 +1），回答风格质检三问——
+
    - 色调：冷暖、饱和度、主色是否同一族？
    - 质感：锐度/景深/噪点是否同一档？
    - 光线：光源方向与软硬是否一致？
+
+   同时跑一次**数字对照**，把"感觉不一样"变成可执行的差值：
+
+   ```bash
+   python scripts/style_anchor.py --video "01-拆解/frame_001.jpg" \
+     --compare "03-资产/first_A.png" --out "03-资产/qc" --qc-only
+   ```
+
+   产出 `03-资产/qc/qc-report.md`（基准=原片同秒帧，对照=生成图）：色温 Δ(R−B)、饱和 Δ、对比 Δ、亮度 Δ、锐度比，五项逐项判 ✅同族 / ⚠️轻微偏 / ❌明显偏。**出现 ❌ 就按差值方向改风格句**——偏冷→补"暖黄光、暖调"，更艳→补"低饱和、灰调"，更暗→补"亮调、曝光充足"；重出样张直到五项全 ✅。
+   数字与肉眼冲突时以肉眼为准，但要在报告里写清理由。
 4. 三问过 → 把两张图并排给学员看，一句话说明"风格锚已对齐（依据：…）"，**等学员点头再批量生成剩余资产**；三问不过 → 改提示词（优先调风格句用词与负向词，路径 B 换路径 A），重出样张，直到过。
 5. 批量生成时每张都带同一段风格句与负向词，`--poll` 超时仍 querying → `query_result --submit_id=<id> --download_dir=replicate/<项目>/03-资产` 跟进下载。
 6. 图片落盘后重命名为 `char_<角色名>.png`、`scene_<场景名>.png`、`first_<X>.png`，**逐张过风格三问**（对着原片同秒帧），不合格重写重生成。
@@ -452,7 +465,7 @@ ffmpeg -hide_banner -i 05-配音/clip_01_dub.mp4 -af volumedetect -f null -
 
 - `references/pipeline-spec.md` —— 各阶段输入/输出契约与示例文件命名，衔接细节拿不准时读它。
 - `scripts/check-env.sh` —— ★ 阶段 0 环境自检：缺什么、怎么装，逐项打印。
-- `scripts/style_anchor.py` —— ★ 阶段 1.6 风格锚定：抽帧量化亮度/对比度/饱和度/色温/主色板/锐度，产出 `style-anchor.md`（风格句+负向词+质检三问）与 `style-swatch.svg`（色板可视化）。零第三方依赖。
+- `scripts/style_anchor.py` —— ★ 阶段 1.6 风格锚定：抽帧量化亮度/对比度/饱和度/色温/主色板/锐度，产出 `style-anchor.md`（风格句+负向词+质检三问）与 `style-swatch.svg`（色板可视化）；带 `--compare <生成图> --qc-only` 时输出五项差值的 `qc-report.md` 对照质检报告（阶段 3 每个样张都用）。零第三方依赖。
 - `scripts/dub.py` —— ★ 阶段 5.5 配音合成：按 dialogue.json 的时间码用 edge-tts 逐句生成、ffmpeg 混入音轨（视频流不重编码），支持环境音铺底与全局偏移。
 - `references/dreamina-cli.md` —— ★ 即梦 CLI 生图生视频通道规范：前置检查、费用确认、命令速查、生成模式→命令映射、结果判定与容错。执行阶段 3/5 前先读它。
 - `vendored/yyl-benchmark-breakdown/` —— 内嵌拆解方法论（一比一副本）：SKILL.md 入口，fetch-playbook（取数回退）、visual-framework（视觉七维）、output-template（三件套模板）、scripts/（check-deps / prepare-assets / bootstrap-local-apis）。阶段 1 前读。

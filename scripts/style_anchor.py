@@ -81,18 +81,26 @@ def probe(video):
 
 
 def grab_frames(video, count, width):
-    """均匀抽 count 帧，等比缩到 width 宽，返回 (帧字节列表, 输出宽, 输出高, 时长)。"""
+    """均匀抽 count 帧，等比缩到 width 宽，返回 (帧字节列表, 输出宽, 输出高, 时长)。
+
+    也支持静态图片输入（生成图质检时对照用）：时长缺失就只抽 1 帧。
+    """
     ffmpeg = find_bin("ffmpeg")
     if not ffmpeg:
         sys.exit("找不到 ffmpeg，先跑 scripts/check-env.sh 装依赖")
     w, h, dur = probe(video)
-    if not w or not h or dur <= 0:
-        sys.exit("视频信息异常：%dx%d, %.2fs" % (w, h, dur))
+    if not w or not h:
+        sys.exit("媒体信息异常：%dx%d" % (w, h))
     out_w = max(32, min(width, w))
     out_h = int(round(h * out_w / float(w) / 2.0)) * 2  # 保持偶数
-    fps = max(count / dur, 0.02)
-    vf = "fps=%.6f,scale=%d:%d" % (fps, out_w, out_h)
-    cmd = [ffmpeg, "-v", "error", "-i", video, "-vf", vf,
+    if dur and dur > 0:
+        fps = max(count / dur, 0.02)
+        vf = "fps=%.6f,scale=%d:%d" % (fps, out_w, out_h)
+        extra = []
+    else:
+        vf = "scale=%d:%d" % (out_w, out_h)   # 静态图片
+        extra = ["-frames:v", "1"]
+    cmd = [ffmpeg, "-v", "error", "-i", video, "-vf", vf] + extra + [
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     res = subprocess.run(cmd, capture_output=True)
     if res.returncode != 0:
@@ -101,8 +109,8 @@ def grab_frames(video, count, width):
     blob = res.stdout
     frames = [blob[i:i + frame_size] for i in range(0, len(blob) - frame_size + 1, frame_size)]
     if not frames:
-        sys.exit("抽帧结果为空，检查视频文件是否可解码")
-    return frames[:count], out_w, out_h, dur
+        sys.exit("抽帧结果为空，检查文件是否可解码")
+    return frames[:max(1, count)], out_w, out_h, dur
 
 
 # ---------------------------------------------------------------- 像素统计
@@ -386,6 +394,58 @@ def negative_string(a, v):
     return "、".join(neg)
 
 
+# ---------------------------------------------------------------- 对照质检
+
+
+def compare_report(base, other, base_name, other_name):
+    """把「感觉不一样」变成数字：色温/饱和/对比/亮度/锐度的差值 + 判定。"""
+    rows = []
+
+    def band(delta, ok, mild):
+        a = abs(delta)
+        return "✅ 同族" if a <= ok else ("⚠️ 轻微偏" if a <= mild else "❌ 明显偏")
+
+    d = (other["r"] - other["b"]) - (base["r"] - base["b"])
+    rows.append(("色温 Δ(R−B)", "%+.1f" % d, band(d, 12, 25),
+                 "生成图偏暖" if d > 0 else ("生成图偏冷" if d < 0 else "一致")))
+    d = other["sat"] - base["sat"]
+    rows.append(("饱和度 Δ", "%+.3f" % d, band(d, 0.06, 0.12),
+                 "生成图更艳" if d > 0 else ("生成图更灰" if d < 0 else "一致")))
+    d = other["contrast"] - base["contrast"]
+    rows.append(("对比度 Δ", "%+.1f" % d, band(d, 8, 15),
+                 "生成图更硬" if d > 0 else ("生成图更平" if d < 0 else "一致")))
+    d = other["mean_y"] - base["mean_y"]
+    rows.append(("亮度 Δ", "%+.1f" % d, band(d, 12, 25),
+                 "生成图更亮" if d > 0 else ("生成图更暗" if d < 0 else "一致")))
+    ratio = (other["edge"] / base["edge"]) if base["edge"] else 1.0
+    ok = 0.7 <= ratio <= 1.4
+    rows.append(("锐度比", "%.2fx" % ratio, "✅ 同档" if ok else "⚠️ 不同档",
+                 "生成图更锐/颗粒更重" if ratio > 1 else "生成图更糊/更干净"))
+    bad = sum(1 for r in rows if r[2].startswith("❌"))
+    warn = sum(1 for r in rows if r[2].startswith("⚠️"))
+    if bad:
+        concl = "❌ 不同族：有 %d 项明显偏离，必须改提示词重生成" % bad
+    elif warn:
+        concl = "⚠️ 边缘：有 %d 项轻微偏离，可接受但建议微调风格句" % warn
+    else:
+        concl = "✅ 同族：五项全部在容差内"
+
+    md = []
+    md.append("## 七、对照质检（%s vs %s）\n" % (other_name, base_name))
+    md.append("| 指标 | 差值 | 判定 | 说明 |\n|---|---|---|---|")
+    for name, val, jd, note in rows:
+        md.append("| %s | %s | %s | %s |" % (name, val, jd, note))
+    md.append("")
+    md.append("**结论**：%s\n" % concl)
+    md.append("容差：色温 ±12、饱和 ±0.06、对比 ±8、亮度 ±12、锐度比 0.7–1.4。（超 2 倍容差记「明显偏」，需重写风格句而不是重抽图片。）\n")
+
+    print("=== 对照质检：%s vs %s ===" % (other_name, base_name))
+    for name, val, jd, note in rows:
+        print("  %-12s %-9s %-8s %s" % (name, val, jd, note))
+    print("  → %s" % concl)
+    return md, concl
+
+
 # ---------------------------------------------------------------- 输出
 
 
@@ -424,7 +484,13 @@ def main():
     ap.add_argument("--frames", type=int, default=12, help="抽帧数量，默认 12")
     ap.add_argument("--width", type=int, default=96, help="分析用缩略宽度，默认 96")
     ap.add_argument("--style-word", default="", help="画风短语（实拍手机随手拍/3D渲染/2D动画…）")
+    ap.add_argument("--compare", default="", help="对照文件（生成的图片或视频），输出风格差异质检报告")
+    ap.add_argument("--qc-only", action="store_true",
+                    help="只出对照质检报告 qc-report.md（基准传原片同秒帧、对照传生成图），不覆盖 style-anchor.md")
     args = ap.parse_args()
+
+    if args.qc_only and not args.compare:
+        sys.exit("--qc-only 需要同时指定 --compare（基准=原片同秒帧，对照=生成的图）")
 
     if not os.path.isfile(args.video):
         sys.exit("视频不存在：%s" % args.video)
@@ -438,8 +504,29 @@ def main():
     sstr = style_string(a, v, hues, args.style_word)
     nstr = negative_string(a, v)
 
+    cmp_md, cmp_concl = [], ""
+    if args.compare:
+        if not os.path.isfile(args.compare):
+            sys.exit("对照文件不存在：%s" % args.compare)
+        cframes, cw, ch, _ = grab_frames(args.compare, args.frames, args.width)
+        b = merge([analyze_frame(f, cw, ch) for f in cframes])
+        cmp_md, cmp_concl = compare_report(a, b, os.path.basename(args.video),
+                                           os.path.basename(args.compare))
+
     md = os.path.join(args.out, "style-anchor.md")
     svg = os.path.join(args.out, "style-swatch.svg")
+
+    # 质检模式：只出对照报告，不动 style-anchor.md（基准=原片同秒帧，对照=生成图）
+    if args.qc_only:
+        head = ["# 风格质检报告\n",
+                "基准：`%s`（原片同秒帧）　｜　对照：`%s`（生成结果）\n" % (
+                    os.path.basename(args.video), os.path.basename(args.compare))]
+        qc_path = os.path.join(args.out, "qc-report.md")
+        with open(qc_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(head + cmp_md))
+        print("已写出：%s" % qc_path)
+        return
+
     write_svg(svg, a["colors"])
 
     lines = []
@@ -486,6 +573,8 @@ def main():
     lines.append("   - 光线：光源方向与软硬是否一致？（光位不对 → 重写）")
     lines.append("4. 三问全过才算资产合格；不过就改风格句重生成，不要靠「多试几张」碰运气。")
     lines.append("")
+    if cmp_md:
+        lines.extend(cmp_md)
     with open(md, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
