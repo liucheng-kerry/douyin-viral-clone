@@ -29,7 +29,7 @@ dreamina user_credit      # 确认登录态 + 报积分余额
 | 阶段 3 生图 | **1 张样张 → 批量** 两段式 | 先做第 1 段首帧样张，过风格三问 + 学员点头后，才批量生成剩余 N 张（批量时报总消耗） |
 | 阶段 5 生视频 | **一段一授权** | 每段单独发「生成申请单」，学员逐段确认；第 N 段授权不覆盖第 N+1 段；"全自动/直接跑完"不豁免；模糊答复不算授权；失败重试要重新报费用并取得同意 |
 
-视频段的授权必须落到 `05-成片/gate-log.md`（申请时间 / 上传素材 / 用户原话 / 授权时间 / submit_id / 结果），**没有这一行不许提交**。申请单的八项固定内容（含**上传清单**）见 SKILL.md 阶段 5。
+视频段的授权必须落到 `05-成片/gate-log.md`（申请时间 / 上传素材 / 用户原话 / 授权时间 / submit_id / 结果），**没有这一行不许提交**。申请单的七项固定内容（含**上传清单**）见 SKILL.md 阶段 5.2；上传清单本体在 `04-提示词/clip_<NN>.materials.txt`，由 `scripts/ref_check.py` 校验并生成命令。
 
 ## 命令速查（详细参数以 `dreamina <子命令> -h` 为准，不要凭记忆硬编码）
 
@@ -114,7 +114,7 @@ dreamina text2image --prompt="..." --ratio=9:16 --resolution_type=2k --generate_
 4. `--video` 传了原片段又传了原片同秒帧 → 两者信息重叠，删掉同秒帧
 5. 仍不行 → 拆成两段生成，别在一段里堆素材
 
-**命令**
+**命令（不要手打，用生成出来的）**
 
 ```bash
 dreamina multimodal2video \
@@ -126,6 +126,8 @@ dreamina multimodal2video \
   --model_version=seedance2.5 --duration=6 --ratio=9:16 \
   --video_resolution=720p --poll=120
 ```
+
+上面这条是**样例形态**。实际提交时由 `scripts/ref_check.py --emit-cmd` 生成 `04-提示词/clip_<NN>.cmd.sh`，直接 `bash` 它：脚本会按 `materials.txt` 的顺序拼参数，同时校验提示词里的 `@ImageN` 与本条命令的 `--image` 顺序是否一致。手打最容易犯的错就是把 `--image` 顺序写反——那等于把场景图当角色图用，而 `@` 编号还写着原来的意思。
 
 - `--video_resolution` **必填**；`--ratio` 省略默认 16:9，抖音竖屏显式写 `9:16`
 - `--prompt` 可以传空（纯素材驱动）但**本技能从不这么用**——没有文字就没有台词、没有动作时间轴

@@ -37,7 +37,14 @@ python scripts/style_anchor.py --video "01-拆解/video/<文件>" --out "01-拆�
 
 **必填空**：脚本只给数值，"画风/镜头质感/光源"三行必须由 agent 用 ViewImage 看帧后补齐，补完可用 `--style-word` 重跑刷新风格句。
 
-**下游契约（硬性）**：阶段 3 每张图片提示词、阶段 4 每段提示词的「视觉基调」行，**必须原样包含风格句**，正文末尾**必须带负向词**。四个文件里的风格句要逐字一致。
+**下游契约（硬性）**：阶段 3 每张图片提示词，以及阶段 4 每段提示词，**必须原样包含风格句的色调词并带负向词**。落地位置取决于选的是 yyl 哪种写法（别一概而论）：
+
+| yyl 写法 | 风格句写进哪个字段 |
+|---|---|
+| A 一镜到底（《丹眉》式） | 【光影与风格】的「光线方向 + 冷暖 + 饱和/对比 + 颗粒/景深」几项，用风格句原词 |
+| B 多分镜（六块结构） | 拆两处：「色彩与影调」← 风格句的色调/饱和/对比/主色；「视觉基调」← 画风判定表的画风 + 镜头质感（该字段本义是摄影机+镜头，不要塞整句色彩统计） |
+
+同一支片子的各段之间这几行要**逐字一致**，这是全片风格统一的锚点。
 
 ## 阶段 2 → 阶段 3（脚本 → 图片资产）
 
@@ -89,7 +96,7 @@ python scripts/style_anchor.py --video "01-拆解/frame_001.jpg" \
 **输入**：`04-提示词/clip_<NN>.md`（严格 yyl-video-prompt 外壳格式）+ `01-拆解/src_clips/src_<NN>.mp4`（动作参考片段，进入本阶段前用 `scripts/split-source.sh` 一次性切完）。
 
 提示词正文的来源约定（质量关键）：
-- **`视觉基调：` 行** ← `01-拆解/style-anchor.md` 的风格句（**各段逐字相同**，不许自己另写形容词），负向词写进正文末尾禁止项
+- **风格句** ← `01-拆解/style-anchor.md`，落位按 yyl 写法分（A 一镜到底 → 【光影与风格】；B 多分镜 → 「色彩与影调」+「视觉基调」两处，见阶段 1.6 的映射表）。**色调词要逐字出现**，不许自己另写形容词；负向词写进正文末尾禁止项
 - **对白** ← `02-脚本/dialogue-map.md` 的「改写台词」列（**不是** `audio.txt` 的原句——原句只是意思基准）；逐句写「秒数 + 谁 + 语气 + 台词」，让模型直接生成音轨。**原句与改写句绝不能同时出现在提示词里**，否则模型两句都念
 - **景别/机位/运镜/构图** ← 阶段 1 逐帧拆解表对应镜头段
 - **动作时间轴** ← 脚本分段表 + 拆解表的逐秒动作（时间码即动作预算，关键事件写到具体秒，最后一拍留 0.5 秒）
@@ -111,6 +118,16 @@ python scripts/style_anchor.py --video "01-拆解/frame_001.jpg" \
 
 **`--image` 的出现顺序就是编号顺序，也是提示词的语义**——申请单清单、命令、提示词三处顺序必须逐字一致。
 
+**上传清单是编号的唯一真源**：每段定稿一份 `04-提示词/clip_<NN>.materials.txt`（`@Image1 | 路径 | 锁什么 | 不取什么`，顺序 = 传参顺序 = `@` 编号）。道具位可选，缺了就整行不写、其后编号顺移，所以**先定清单再核提示词**。定稿后必跑：
+
+```bash
+python scripts/ref_check.py --materials 04-提示词/clip_NN.materials.txt --duration 6 \
+  --style-anchor 01-拆解/style-anchor.md \
+  --out 04-提示词/clip_NN.refs.md --emit-cmd 04-提示词/clip_NN.cmd.sh
+```
+
+退出码非 0（有 ✘）= **不许发申请单**。通过后命令已生成在 `cmd.sh`，提交时执行它，不要手打——手打必然与提示词编号错位。
+
 字段映射：
 - 提示词文件"提示词"代码块内容 → `--prompt`（元信息外壳、段尾状态行不传；走 `$(cat 04-提示词/.prompt/clip_NN.prompt.txt)` 避免转义）
 - 每个 `--image` / `--video` → 按上表顺序
@@ -121,13 +138,14 @@ python scripts/style_anchor.py --video "01-拆解/frame_001.jpg" \
 
 **成功判定**：`gen_status=success` 才算完成，不以提交受理为准。
 
-**逐段授权契约（硬门）**：本阶段不是一个批次，而是 N 个独立申请。每段提交前必须满足四项：
+**逐段授权契约（硬门）**：本阶段不是一个批次，而是 N 个独立申请。每段提交前必须满足五项：
 
 | 条件 | 校验方式 |
 |---|---|
-| 上传清单里每个文件都存在 | `ls` 逐个确认，路径打不开不许提交 |
+| 上传清单已定稿且机械校验通过 | `python scripts/ref_check.py --materials 04-提示词/clip_NN.materials.txt`，**✘ 必须为 0**（它同时验文件存在/编号连续/`@` 集合一致/每个 `@` 有不取项/无致哑表述/两份正文一致） |
+| 生成命令来自 `ref_check --emit-cmd` | 执行 `04-提示词/clip_NN.cmd.sh`，不手打 |
 | 该段参考图已过风格三问 | 与 `frame_<秒>.jpg` 并排比对，结论写进对话 |
-| 该段提示词已过结构校验 + `@` 引用完整 | `python vendored/yyl-video-prompt/scripts/prompt_builder.py --validate 04-提示词/clip_NN.md`，并人工确认每个 `@` 有"锁什么 + 不取什么" |
+| 该段提示词已过结构校验 | `python vendored/yyl-video-prompt/scripts/prompt_builder.py --validate 04-提示词/clip_NN.md` |
 | 该段已获学员授权 | `05-成片/gate-log.md` 里有对应的「上传素材 + 用户授权原话 + 授权时间」行 |
 
 `gate-log.md` 结构（每段一行，原话引述，不许概括）：
@@ -205,6 +223,8 @@ ffmpeg -i 05-配音/clip_01_dub.mp4 -af volumedetect -f null -
 | 各段首帧/构图参考 | `03-资产/first_<X>.png`（原片帧改绘，路径 A）+ `03-资产/last_<NN>.jpg`（上一段 clip 末帧抽帧，接力用） |
 | **动作参考片段** | `01-拆解/src_clips/src_<NN>.mp4` + `01-拆解/src_clips/src-manifest.txt`（由 `scripts/split-source.sh` 按 `01-拆解/segs.txt` 切出，全能参考 `--video` 用） |
 | 视频提示词 | `04-提示词/clip_<NN>.md` + `04-提示词/.prompt/clip_<NN>.prompt.txt`（纯正文，供 `--prompt` 读取） |
+| **上传清单** | `04-提示词/clip_<NN>.materials.txt`（顺序 = `@` 编号 = 传参顺序；`scripts/ref_check.py` 的输入） |
+| **校验报告 / 生成命令** | `04-提示词/clip_<NN>.refs.md` + `04-提示词/clip_<NN>.cmd.sh`（由 `ref_check.py --out/--emit-cmd` 生成） |
 | 生成片段 | `05-成片/clip_<NN>.mp4`（画面 + 模型原生人声音轨） |
 | 逐段授权台账 | `05-成片/gate-log.md`（每段：申请/用户原话/授权时间/submit_id/结果/音频验收） |
 | **拼接后成片（默认）** | `05-成片/成片_无BGM.mp4`（`concat.txt` 流拷贝拼接，等于各段之和） |

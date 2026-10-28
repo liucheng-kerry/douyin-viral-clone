@@ -71,6 +71,12 @@ if [ -n "$DREAMINA" ]; then
   else
     fail "dreamina 未登录" "运行 dreamina login，按提示在浏览器完成授权（5 分钟内有效），或问 agent 帮你发起登录"
   fi
+  # 全能参考（multimodal2video）是整个流程的视频主通道，旧版 CLI 可能根本没有这个子命令
+  if $DREAMINA multimodal2video --help 2>&1 | grep -q -- '--image'; then
+    pass "multimodal2video（全能参考）可用"
+  else
+    fail "dreamina 不支持 multimodal2video（全能参考）" "CLI 版本过旧，重跑安装命令升级：curl -s https://jimeng.jianying.com/cli | bash，再 dreamina login"
+  fi
 else
   fail "dreamina 未安装" "curl -s https://jimeng.jianying.com/cli | bash（需 Git Bash/macOS/Linux 终端；装完重开终端，再跑 dreamina login）"
 fi
