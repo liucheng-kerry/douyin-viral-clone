@@ -3,7 +3,7 @@
 把一条对标爆款链接变成自己的 AI 视频成片，**全程在 WorkBuddy 内完成**，不需要学员拿着提示词去即梦或其他平台。
 
 ```
-对标链接 → ①拆解 → ①.6风格锚定 → ②复刻确认+脚本 → ③即梦生图资产 → ④视频提示词 → ⑤即梦生成成片（逐段授权） → ⑤.5配音 → ⑥BGM
+对标链接 → ①拆解 → ①.6风格锚定 → ②复刻确认+脚本 → ③即梦生图资产 → ④视频提示词（含对白） → ⑤即梦生成成片（逐段授权+原生人声） → ⑤.5音频验收 → ⑥BGM
 ```
 
 ## 工作流（八阶段）
@@ -15,12 +15,14 @@
 | **①.6 风格锚定** | 抽帧统计原片的亮度/对比度/饱和度/色温/主色板/锐度 → 生成**风格句 + 负向词**，把"像不像"变成可执行数据；画风定性由 agent 看图补齐；带 `--compare` 还能出**五项差值的质检报告**（色温/饱和/对比/亮度/锐度） | `style-anchor.md` + `style-swatch.svg` |
 | ② 复刻确认+脚本 | 确认复刻方式（1:1 / 主角替换 / 只借结构）→ 写分段时间轴脚本 + **台词时间码表** | `script.md` |
 | ③ 图片资产 | 角色四面板 + 场景九宫格 + **各段首帧图**（逐项对齐逐帧拆解表对应秒，且**每张提示词都带同一段风格句与负向词**）；**先出 1 张样张做同秒比对，确认风格后才批量** | `char_*.png` / `scene_*.png` / `first_*.png` |
-| ④ 视频提示词 | 严格按 `yyl-video-prompt` 方法论：**`视觉基调:` 行照抄风格句**；景别/机位/运镜/构图照逐帧拆解表复刻；首帧图生模式下外观不进正文；时间码即动作预算；**口型动作与台词表逐字同源** | `clip_<NN>.md` |
-| ⑤ 即梦生成画面 | **逐段授权门：每段生成前单独申请、单独获得许可**（第 1 段的授权不覆盖第 2 段，"全自动"也不豁免），每段授权记进 `gate-log.md`；生成完单独交付验收，通过才进下一段 | `clip_<NN>.mp4`（**无音轨**）+ `gate-log.md` |
-| **⑤.5 对白配音与音效** | **必做，不做就是哑片**。即梦 CLI 全部视频命令没有音频参数，对白必须后期注入：写 `dialogue_c<NN>.json` → `scripts/dub.py` 用 edge-tts 按秒合成 → ffmpeg 只加音轨不重编码 → silencedetect/volumedetect 校验 | `dialogue_c<NN>.json` + `clip_<NN>_dub.mp4` |
+| ④ 视频提示词 | 严格按 `yyl-video-prompt` 方法论：**`视觉基调:` 行照抄风格句**；景别/机位/运镜/构图照逐帧拆解表复刻；首帧图生模式下外观不进正文；时间码即动作预算；**对白逐句写进提示词（秒数+谁+语气+台词），让模型直接生成人声音轨** | `clip_<NN>.md` |
+| ⑤ 即梦生成画面 | **逐段授权门：每段生成前单独申请、单独获得许可**（第 1 段的授权不覆盖第 2 段，"全自动"也不豁免），每段授权记进 `gate-log.md`；生成完单独交付验收，通过才进下一段 | `clip_<NN>.mp4`（**含模型原生人声**）+ `gate-log.md` |
+| **⑤.5 音频验收（兜底配音）** | 即梦的输出**自带 AAC 音轨**（seedance2.5 原生音画同步），对白由提示词驱动模型生成。本阶段只做验收：`ffprobe` 验有音轨 → 抽音轨转写验有人声且是那几句台词。**只有模型确实不出人声时**，才用 `scripts/dub.py` 走 edge-tts 兜底配音 | 验收结论记 `gate-log.md`；兜底才有 `clip_<NN>_dub.mp4` |
 | ⑥ BGM 适配合成 | **硬确认门：学员确认成片后才启动**。写 BGM 适配单（情绪曲线对齐钩子/转折秒数）→ 生成音频（即梦 Web / 曲库 / Suno）→ ffmpeg 以配音轨为底混音 | `成片_BGM版.mp4` |
 
-> ⚠️ **关于对白**：即梦 CLI 的 `image2video` / `text2video` / `multimodal2video` 都没有任何音频参数（`dreamina --help` 里不存在 audio/tts/lip 子命令），生成的 mp4 只有视频流。所以「让模型直接念台词」做不到，对白一律由阶段 ⑤.5 按时间码注入。想要口型精准同步，只能在即梦 Web 端「对口型」二次处理。
+> ⚠️ **关于对白（已实测更正）**：即梦的视频命令确实没有 `--audio` 这种"输出音频开关"，但**输出的 mp4 自带音轨**——seedance 2.5 是原生音画同步模型，声音是模型生成的。`ffprobe` 任意一个 `clip_<NN>.mp4` 都能看到 `h264,video` + `aac,audio` 双流。
+>
+> 所以**对白一律写进提示词，让模型自己说**（参考原视频转写稿，逐句写「第几秒 + 谁 + 什么语气 + 台词」）。**千万别写"模型不负责出声/台词后期配音"**——模型会严格执行，结果就是环境声齐全、一句台词都没有的片（v2 就是这么翻车的）。后期配音（`scripts/dub.py`）只作为模型不出人声时的兜底手段。
 
 ## 目录结构
 
@@ -33,7 +35,7 @@ douyin-viral-clone/
 ├── scripts/
 │   ├── check-env.sh            # 阶段 0 环境自检（缺什么/怎么装）
 │   ├── style_anchor.py         # 阶段 1.6 风格锚定（抽帧量化→风格句+色板）
-│   ├── dub.py                  # 阶段 5.5 对白配音注入（edge-tts + ffmpeg）
+│   ├── dub.py                  # 阶段 5.5.2 兜底配音（仅模型不出人声时）
 │   ├── fetch-video.sh          # 链接下载兜底通道（yt-dlp）
 │   └── prepare-local-video.sh  # 本地视频证据包（转写+逐帧抽帧+contact sheet）
 └── vendored/
@@ -68,9 +70,10 @@ git clone https://github.com/liucheng-kerry/douyin-viral-clone.git "$HOME/.workb
 # ffmpeg（抽帧、转写喂音、混音）
 winget install Gyan.FFmpeg          # macOS: brew install ffmpeg
 
-# Python + whisper（口播转写）+ edge-tts（对白配音，阶段 5.5 必需）
+# Python + whisper（口播转写）+ edge-tts（兜底配音，可选）
 winget install Python.Python.3.12   # macOS: brew install python
-pip install -U openai-whisper edge-tts
+pip install -U openai-whisper
+pip install -U edge-tts             # 可选：模型没生成人声时才用
 
 # 即梦 CLI（生图生视频通道，Windows 需在 Git Bash 里跑）
 curl -s https://jimeng.jianying.com/cli | bash
@@ -102,7 +105,7 @@ bash ~/.workbuddy/skills/douyin-viral-clone/scripts/check-env.sh
 |---|---|---|
 | [WorkBuddy](https://www.workbuddy.cn) | 运行环境（Skill 工具调用、多模态读图） | 必需 |
 | [即梦 CLI (dreamina)](https://jimeng.jianying.com/cli) | 生图生视频通道，需即梦账号授权 | 必需（阶段 3/5） |
-| edge-tts | 对白配音（CLI 生成的视频无音轨，对白必须后期注入） | 必需（阶段 5.5） |
+| edge-tts | 兜底配音（模型没出人声时才用）；常规流程靠模型原生音轨 | 可选（阶段 5.5.2） |
 | ffmpeg + ffprobe | 抽帧、转写喂音、混音合成 | 必需 |
 | openai-whisper | 口播转写 | 必需 |
 | yt-dlp | 链接下载兜底通道 | 可选 |
@@ -125,7 +128,7 @@ bash ~/.workbuddy/skills/douyin-viral-clone/scripts/check-env.sh
 - **保守执行**：每个付费动作前报余额与预计消耗；样张先行，风格锚对了才批量
 - **成功判定严格**：`gen_status=success` 才算完成；中断后凭 `list_task` + `gate-log.md` 找回，避免重复扣积分
 - **质量来自拆解**：图片和视频的质量上限由逐帧拆解的颗粒度决定——每个物体、景别、机位、运镜、构图都要落到提示词里
-- **声音不靠模型靠流程**：即梦 CLI 不出声，对白一律由阶段 5.5 按台词时间码注入；提示词只负责把口型动作对齐到同一张时间表，两边共用一份 `dialogue_c<NN>.json`
+- **声音不靠后期靠提示词**：即梦 seedance 2.5 原生音画同步，输出自带音轨。对白写进提示词（秒数+谁+语气+原片台词），模型自己说；验收只是确认它说没说。后期配音是兜底，不是常规流程
 
 ## 来源声明（Credits）
 
@@ -134,4 +137,4 @@ bash ~/.workbuddy/skills/douyin-viral-clone/scripts/check-env.sh
 - `vendored/yyl-benchmark-breakdown/`（对标拆解方法论）
 - `vendored/yyl-video-prompt/`（导演式 AI 视频提示词方法论）
 
-来自 **「鱼亦乐」的方法论技能包**，为一比一完整副本（未做任何内容修改），在此致谢。其版权归原作者所有，本仓库收录仅用于教学复刻工作流的内部衔接。若你是原作者并希望移除或更改署名方式，请提 Issue 或联系仓库所有者，我们会立即处理。`vendored/` 之外的其余部分（七阶段编排、逐帧拆解规范、即梦 CLI 通道、配音注入脚本）为本仓库原创。
+来自 **「鱼亦乐」的方法论技能包**，为一比一完整副本（未做任何内容修改），在此致谢。其版权归原作者所有，本仓库收录仅用于教学复刻工作流的内部衔接。若你是原作者并希望移除或更改署名方式，请提 Issue 或联系仓库所有者，我们会立即处理。`vendored/` 之外的其余部分（八阶段编排、逐帧拆解规范、风格锚定脚本、即梦 CLI 通道、逐段授权机制、兜底配音脚本）为本仓库原创。

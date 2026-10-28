@@ -84,6 +84,21 @@ dreamina image2video --image=./clip_01_first.png --prompt="..." --video_resoluti
 - `image2video` / `frames2video` 用 seedance2.5 时**禁止传 `--ratio`**（输出跟随首帧）；其他模型可传也可自动跟随。
 - `--duration` 默认 5s。
 
+### 音频（重要事实，别再搞错）
+
+所有视频命令（`image2video` / `text2video` / `frames2video` / `multiframe2video` / `multimodal2video`）**没有** `--audio` 之类的"输出音频开关"，但**输出的 mp4 自带 AAC 音轨**——seedance 2.5 是原生音画同步模型，声音是模型生成的：
+
+```bash
+ffprobe -v error -show_entries stream=codec_type,codec_name -of csv=p=0 clip_01.mp4
+# h264,video
+# aac,audio      ← 音轨一直都在（实测 4–8s 段：mean −34dB / max −3.6dB / 全程无静音）
+```
+
+- 对白靠**提示词驱动**：写清「第几秒 + 谁 + 语气 + 台词原文」，并要求"直接生成同步人声、口型与音节逐帧对齐"
+- **绝不能写**"不生成语音 / 模型不负责出声 / 台词后期配音"——模型会严格执行，结果只有环境声、没有台词（v2 实测：四段音轨都在，台词一句没有）
+- `multimodal2video --audio` 是**输入**参考音频（音色/配乐参考），**不是**输出开关，别搞混
+- 台词没出来时的排查顺序：① 删掉所有负面表述 → ② 对白块挪到【声音】段最前 → ③ 换 `--model_version=seedance2.5` → ④ 台词拆短（>12 字拆两句）→ ⑤ 去掉 BGM 相关描述
+
 ### 查询与下载
 
 ```bash
