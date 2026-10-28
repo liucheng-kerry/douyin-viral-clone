@@ -65,6 +65,14 @@ python scripts/style_anchor.py --video "01-拆解/video/<文件>" --out "01-拆�
 避免：<负向风格词：原样复制>
 ```
 
+**参数门（先于样张门）**：每一批出图前先发「出图申请单」，让学员选定**通道（image2image / text2image）+ 模型版本 + 分辨率 + 比例 + 张数**，并同单报余额与预计消耗。四项不许用默认值代替学员选择。选定后写 `03-资产/image-gate.md`（`python scripts/gate_check.py --template image` 打印表头），过校验才能执行：
+
+```bash
+python scripts/gate_check.py --image-gate 03-资产/image-gate.md --batch img_01
+```
+
+`gate_check.py` 同时校验模型×分辨率组合是否合法（3.0/3.1 → 1k/2k；4.x 与 5.0 → 2k/4k；5.0Pro → 1.5k/2k/4k；改图不支持 3.x）、比例与张数是否超限、批量之前是否已有成功样张。
+
 **样张门**：先只生成第 1 段首帧图作为样张，与 `01-拆解/frame_<该段起始秒>.jpg` 并排做风格三问（色调/质感/光线），并跑数字对照：
 
 ```bash
@@ -138,7 +146,7 @@ python scripts/ref_check.py --materials 04-提示词/clip_NN.materials.txt --dur
 
 **成功判定**：`gen_status=success` 才算完成，不以提交受理为准。
 
-**逐段授权契约（硬门）**：本阶段不是一个批次，而是 N 个独立申请。每段提交前必须满足五项：
+**逐次生成授权契约（硬门）**：本阶段不是一个批次，而是 N 个独立申请，且同一段的第 2 次提交（重生成/重试）也算新的一次申请。每次提交前必须满足六项：
 
 | 条件 | 校验方式 |
 |---|---|
@@ -146,15 +154,28 @@ python scripts/ref_check.py --materials 04-提示词/clip_NN.materials.txt --dur
 | 生成命令来自 `ref_check --emit-cmd` | 执行 `04-提示词/clip_NN.cmd.sh`，不手打 |
 | 该段参考图已过风格三问 | 与 `frame_<秒>.jpg` 并排比对，结论写进对话 |
 | 该段提示词已过结构校验 | `python vendored/yyl-video-prompt/scripts/prompt_builder.py --validate 04-提示词/clip_NN.md` |
-| 该段已获学员授权 | `05-成片/gate-log.md` 里有对应的「上传素材 + 用户授权原话 + 授权时间」行 |
+| 该段已获学员授权（**这一次的**） | `05-成片/gate-log.md` 里有对应的「动作 + 上传素材 + 用户授权原话 + 授权时间」行 |
+| 台账能对上账 | `python scripts/gate_check.py --gate 05-成片/gate-log.md --segment clip_NN`，**✘ 必须为 0**（它查授权原话是否具体、时间是否倒挂、动作列是否标对、上传素材是否为空） |
 
-`gate-log.md` 结构（每段一行，原话引述，不许概括）：
+`gate-log.md` 结构（每段**每次提交**一行，原话引述，不许概括；表头用 `gate_check.py --template video` 打印）：
 
-| 段号 | 申请时间 | 段长/模式/预计积分 | 上传素材（@ 编号） | 用户授权原话 | 授权时间 | submit_id | 结果 |
-|---|---|---|---|---|---|---|---|
-| clip_01 | 10-28 14:02 | 6s/全能参考/约120 | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | "第一段可以生成" | 10-28 14:05 | 1234567 | success |
+| 序号 | 段号 | 动作 | 通道/模型 | 参数 | 预计积分 | 上传素材（@ 编号） | 申请时间 | 用户授权原话 | 授权时间 | submit_id | 结果 | 备注 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | clip_01 | 首次 | multimodal2video / seedance2.5 | 6s/720p/9:16 | 约120 | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | 10-28 14:02 | "第1段可以生成" | 10-28 14:05 | 1234567 | success | 原生人声 ✅ |
+| 2 | clip_01 | 重生成-画面 | multimodal2video / seedance2.5 | 6s/720p/9:16 | 约120 | @Image1 char_猫、@Image2 scene_摊、@Image4 last_00、@Video1 src_01 | 10-28 15:10 | "第1段重做一版，尾巴别抖" | 10-28 15:12 | — | 待提交 | 上版尾帧抖 |
 
-授权粒度：一段一授权，第 N 段的授权不覆盖第 N+1 段；"全自动/直接跑完"不豁免；模糊答复（"都行/随便"）不算授权。失败重试同样要重新报费用并取得同意。
+授权粒度：**一段一次**，第 N 段的授权不覆盖第 N+1 段，**第 1 次的授权也不覆盖第 2 次**；"全自动/直接跑完"不豁免；模糊答复（"都行/随便/你看着办"）不算授权。
+
+**重生成/重试/换通道的契约**（动作列必须写对，否则台账看不出花了两次钱）：
+
+| 触发 | 动作列 | 前置要求 |
+|---|---|---|
+| 画面不满意 | `重生成-画面` | 先改 `clip_NN.md` → 重跑 `ref_check`（素材/`@` 变动时）→ 重发申请单 |
+| 音频验收不过 | `重生成-音频` | 按 5.5.1 排查顺序改声音段 → 重跑 `ref_check` → 重发申请单 |
+| 提交 fail / 超时重提 | `重试-失败` | 备注写 `fail_reason` → 重发申请单（重试也扣积分） |
+| 换 frames2video / image2video / text2image | `例外通道` | 备注写原因 → 重发申请单，不得沿用上一条授权 |
+
+上一轮结果**必须落账不许删**（fail 写 fail + 原因；画面生成了但不采用写 success + 备注"未采用"），旧产物移到 `05-成片/_old/clip_<NN>_v1.mp4`，避免 `ls clip_*.mp4 | sort` 拼进废弃版本。
 
 ## 阶段 5 → 阶段 5.5（生成结果 → 音频验收，兜底时才配音）
 
@@ -220,13 +241,14 @@ ffmpeg -i 05-配音/clip_01_dub.mp4 -af volumedetect -f null -
 | 角色图 | `03-资产/char_<角色名>.png` + `03-资产/prompts/char_<角色名>.md` |
 | 场景图 | `03-资产/scene_<场景名>.png` + `03-资产/prompts/scene_<场景名>.md` |
 | 道具图（可选） | `03-资产/prop_<道具名>.png` |
+| **出图参数与授权台账** | `03-资产/image-gate.md`（每批一行：批次/类型/通道/模型/分辨率/比例/张数/预计积分/申请/用户原话/授权时间/结果），`scripts/gate_check.py` 的输入 |
 | 各段首帧/构图参考 | `03-资产/first_<X>.png`（原片帧改绘，路径 A）+ `03-资产/last_<NN>.jpg`（上一段 clip 末帧抽帧，接力用） |
 | **动作参考片段** | `01-拆解/src_clips/src_<NN>.mp4` + `01-拆解/src_clips/src-manifest.txt`（由 `scripts/split-source.sh` 按 `01-拆解/segs.txt` 切出，全能参考 `--video` 用） |
 | 视频提示词 | `04-提示词/clip_<NN>.md` + `04-提示词/.prompt/clip_<NN>.prompt.txt`（纯正文，供 `--prompt` 读取） |
 | **上传清单** | `04-提示词/clip_<NN>.materials.txt`（顺序 = `@` 编号 = 传参顺序；`scripts/ref_check.py` 的输入） |
 | **校验报告 / 生成命令** | `04-提示词/clip_<NN>.refs.md` + `04-提示词/clip_<NN>.cmd.sh`（由 `ref_check.py --out/--emit-cmd` 生成） |
-| 生成片段 | `05-成片/clip_<NN>.mp4`（画面 + 模型原生人声音轨） |
-| 逐段授权台账 | `05-成片/gate-log.md`（每段：申请/用户原话/授权时间/submit_id/结果/音频验收） |
+| 生成片段 | `05-成片/clip_<NN>.mp4`（画面 + 模型原生人声音轨）；重生成后的旧版移入 `05-成片/_old/clip_<NN>_v<k>.mp4`，不覆盖、不参与拼接 |
+| 逐次授权台账 | `05-成片/gate-log.md`（每段**每次提交**一行：动作/参数/上传素材/申请/用户原话/授权时间/submit_id/结果/音频验收） |
 | **拼接后成片（默认）** | `05-成片/成片_无BGM.mp4`（`concat.txt` 流拷贝拼接，等于各段之和） |
 | 台词表（兜底） | `05-配音/dialogue_c<NN>.json`（只在模型不出人声时才建） |
 | 配音片段（兜底） | `05-配音/clip_<NN>_dub.mp4` |
