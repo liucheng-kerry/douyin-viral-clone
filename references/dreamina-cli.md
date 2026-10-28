@@ -43,7 +43,9 @@ dreamina user_credit      # 确认登录态 + 报积分余额
 
 两个台账（图片 `03-资产/image-gate.md`、视频 `05-成片/gate-log.md`）由 `scripts/gate_check.py` 校验，**✘ 未清零不许执行任何 `dreamina` 生成命令**——详见 SKILL.md《生成授权总纲》与阶段 3.4 / 5.1。
 
-视频段的授权必须落到 `05-成片/gate-log.md`（动作 / 参考视频 / 参数 / 上传素材 / 用户原话 / 授权时间 / submit_id / 结果），**没有这一行不许提交**。申请单的九项固定内容（含「本次是第 K 次」、「上传清单」与**参考视频 A/B 两档报价**）见 SKILL.md 阶段 5.2；上传清单本体在 `04-提示词/clip_<NN>.materials.txt`，由 `scripts/ref_check.py` 校验并生成命令。
+视频段的授权必须落到 `05-成片/gate-log.md`（动作 / 参考视频 / 参数 / 预计积分 / 实际积分 / 上传素材 / 用户原话 / 授权时间 / submit_id / 结果），**没有这一行不许提交**。申请单的九项固定内容（含「本次是第 K 次」、「上传清单」与**参考视频 A/B 两档报价**）见 SKILL.md 阶段 5.2；上传清单本体在 `04-提示词/clip_<NN>.materials.txt`，由 `scripts/ref_check.py` 校验并生成命令。
+
+**生成成功立刻回填「实际积分」**：`dreamina list_task` 里该任务的 `commerce_info.credit_count` 就是真实扣费。只填「预计积分」等于自己给自己报价、从不验收——`gate_check.py` 会报 ⚠，偏差超 30% 时提示用 `quote.py --calibrate` 重校单价。
 
 ## 计费：传不传参考视频是两档（`--video` 逐段可选）
 

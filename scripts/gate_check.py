@@ -82,14 +82,14 @@ VIDEO_COLS = ('段号', '动作', '参考视频', '用户授权原话', '授权�
 IMG_COLS = ('批次', '类型', '通道', '模型版本', '分辨率', '用户授权原话', '授权时间')
 
 TEMPLATE_VIDEO = (
-    '| 序号 | 段号 | 动作 | 通道/模型 | 参数（时长/分辨率/比例） | 参考视频 | 预计积分 | 上传素材（@ 编号） | 申请时间 | 用户授权原话 | 授权时间 | submit_id | 结果 | 备注 |\n'
-    '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n'
-    '| 1 | clip_01 | 首次 | multimodal2video / seedance2.5 | 6s / 720p / 9:16 | 传 src_01（6s） | 约144 | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | 10-28 14:02 | "第1段可以生成，带参考视频" | 10-28 14:05 | — | 待提交 | — |\n'
+    '| 序号 | 段号 | 动作 | 通道/模型 | 参数（时长/分辨率/比例） | 参考视频 | 预计积分 | 实际积分 | 上传素材（@ 编号） | 申请时间 | 用户授权原话 | 授权时间 | submit_id | 结果 | 备注 |\n'
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n'
+    '| 1 | clip_01 | 首次 | multimodal2video / seedance2.5 | 6s / 720p / 9:16 | 传 src_01（6s） | 约132–156 |  | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | 10-28 14:02 | "第1段可以生成，带参考视频" | 10-28 14:05 | — | 待提交 | — |\n'
 )
 TEMPLATE_IMAGE = (
-    '| 批次 | 类型 | 通道 | 模型版本 | 分辨率 | 比例 | 张数 | 预计积分 | 申请时间 | 用户授权原话 | 授权时间 | 结果 | 产出文件 |\n'
-    '|---|---|---|---|---|---|---|---|---|---|---|---|---|\n'
-    '| img_01 | 样张 | image2image | 5.0 | 2k | 9:16 | 1 | 约8 | 10-28 11:20 | "就用5.0 2k，先出这张" | 10-28 11:23 | success | 03-资产/first_A.png |\n'
+    '| 批次 | 类型 | 通道 | 模型版本 | 分辨率 | 比例 | 张数 | 预计积分 | 实际积分 | 申请时间 | 用户授权原话 | 授权时间 | 结果 | 产出文件 |\n'
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n'
+    '| img_01 | 样张 | image2image | 5.0 | 2k | 9:16 | 1 | 约8 | 8 | 10-28 11:20 | "就用5.0 2k，先出这张" | 10-28 11:23 | success | 03-资产/first_A.png |\n'
 )
 
 
@@ -103,6 +103,16 @@ def read_text(path):
 
 def norm(s):
     return re.sub(r'[\s*`　]', '', s or '')
+
+
+def numbers(s):
+    """取单元格里的所有数字：「约132–156」-> [132, 156]，「约8」-> [8]，空 -> []。"""
+    return [float(x) for x in re.findall(r'\d+(?:\.\d+)?', (s or '').replace(',', ''))]
+
+
+def parse_float(s):
+    n = numbers(s)
+    return n[0] if n else None
 
 
 def parse_tables(path):
@@ -217,7 +227,12 @@ def check_authorization(header, row, token, errs, warns, tag):
 
 
 def is_submitted(header, row, result_key='结果'):
-    return bool(col(header, row, 'submit_id')) or col(header, row, result_key) not in ('', '待提交', '—', '-')
+    """「待提交」行里的 submit_id 通常写「—」占位，不能当成真提交。"""
+    sid = (col(header, row, 'submit_id') or '').strip()
+    result = col(header, row, result_key)
+    if result == '待提交':
+        return False
+    return bool(sid) and sid not in ('—', '-', '——', '待提交')
 
 
 # ------------------------------------------------------------------ 视频台账
@@ -232,6 +247,8 @@ def check_video(path, segment, errs, warns, infos):
     seen_ids = {}
     by_seg = {}
     total_submitted = 0
+    actual_sum = 0.0
+    actual_rows = 0
 
     for idx, row in enumerate(rows, 1):
         seg = col(header, row, '段号')
@@ -251,6 +268,26 @@ def check_video(path, segment, errs, warns, infos):
             warns.append('%s 结果「%s」不在约定枚举（%s）' % (tag, result, '/'.join(VIDEO_RESULTS)))
         if not col(header, row, '预计积分'):
             warns.append('%s 没写预计积分（等于没报价）' % tag)
+
+        # 实际积分：生成成功后必须回填，否则"报的价"和"扣的钱"永远对不上账
+        actual = col(header, row, '实际积分')
+        if result in ('success', '已验收', '已下载') or (not result and submitted):
+            if not actual:
+                warns.append('%s 已生成但没回填「实际积分」——跑 `dreamina list_task` 读这条任务的 '
+                             'commerce_info.credit_count 填进来（报价准不准全靠这一列）' % tag)
+            else:
+                got = parse_float(actual)
+                planned = numbers(col(header, row, '预计积分'))
+                if got is not None:
+                    actual_sum += got
+                    actual_rows += 1
+                if got is not None and planned:
+                    lo, hi = min(planned), max(planned)
+                    if got < lo * 0.7 or got > hi * 1.3:
+                        warns.append('%s 实际积分 %g 与报价 %s 差得太多（超 30%%）——'
+                                     '要么预计积分写错了，要么时长/分辨率/参考片段秒数记错了；'
+                                     '按真实扣费跑一次 `python scripts/quote.py --calibrate --ref <参考秒>` 校准'
+                                     % (tag, got, col(header, row, '预计积分')))
         if action == '例外通道' and not col(header, row, '备注'):
             warns.append('%s 走了例外通道但没写原因（事后无法对账）' % tag)
 
@@ -365,6 +402,11 @@ def check_video(path, segment, errs, warns, infos):
                          % (segment, len(items), len([1 for (_, _, s, _, _) in items if s])))
 
     infos.append('%s：%d 行，已提交 %d 条' % (path, len(rows), total_submitted))
+    if actual_rows:
+        infos.append('已回填实际积分 %d 条，合计 %g 积分（这就是这部片子到目前真花的钱）'
+                     % (actual_rows, actual_sum))
+    elif total_submitted:
+        infos.append('还没有任何实际积分回填——报价是估的还是准的，目前无从判断')
 
 
 # ------------------------------------------------------------------ 图片台账
@@ -377,6 +419,8 @@ def check_images(path, batch, errs, warns, infos):
         return
 
     sample_ok_at = None   # 第一条 结果=success 的样张行号
+    img_actual = 0.0
+    img_rows = 0
     for idx, row in enumerate(rows, 1):
         tmp = col(header, row, '类型')
         if norm(tmp) == '样张' and col(header, row, '结果') == 'success':
@@ -423,11 +467,28 @@ def check_images(path, batch, errs, warns, infos):
                 errs.append('%s 张数 %s 超限（1–10）' % (tag, num))
 
         # 样张先行
-        if typ in ('批量', '单张补', '重生成') and sample_ok_at is None:
-            errs.append('%s 类型是「%s」，但台账里没有一条 结果=success 的「样张」记录——'
+        if typ in ('批量', '单张补', '重生成') and sample_ok_at is None:            errs.append('%s 类型是「%s」，但台账里没有一条 结果=success 的「样张」记录——'
                         '违反样张先行：先出 1 张过风格三问，再批量' % (tag, typ))
         elif typ in ('批量', '单张补', '重生成') and sample_ok_at and sample_ok_at > idx:
             errs.append('%s 的样张记录排在本行之后——顺序反了，样张必须在批量之前' % tag)
+
+        # 实际积分：出图成功后回填，图片单价按模型分档，偏差大说明选错了模型/分辨率
+        actual = col(header, row, '实际积分')
+        if result in ('success', '已下载') and not actual:
+            warns.append('%s 出图成功但没回填「实际积分」——`dreamina list_task` 里这条的 '
+                         'commerce_info.credit_count 就是实扣金额' % tag)
+        elif actual:
+            got = parse_float(actual)
+            planned = numbers(col(header, row, '预计积分'))
+            if got is not None:
+                img_actual += got
+                img_rows += 1
+            if got is not None and planned:
+                lo, hi = min(planned), max(planned)
+                if got < lo * 0.7 or got > hi * 1.3:
+                    warns.append('%s 实际积分 %g 与报价 %s 差得太多（超 30%%）——'
+                                 '多半是模型/分辨率/张数记错了，或者命中了不同计费档'
+                                 % (tag, got, col(header, row, '预计积分')))
 
         # 授权：台账里每一行都是一次真实生成，无条件要有原话与时间（类型写错也不能漏查）
         check_authorization(header, row, b or 'img', errs, warns, tag)
@@ -441,6 +502,8 @@ def check_images(path, batch, errs, warns, infos):
                      % (path, len(rows), ('已过（第 %d 行）' % sample_ok_at) if sample_ok_at else '未过 ⚠'))
 
     infos.append('%s：%d 批记录' % (path, len(rows)))
+    if img_rows:
+        infos.append('出图已回填实际积分 %d 批，合计 %g 积分' % (img_rows, img_actual))
 
 
 # ------------------------------------------------------------------ 报告

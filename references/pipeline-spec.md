@@ -159,12 +159,14 @@ python scripts/ref_check.py --materials 04-提示词/clip_NN.materials.txt --dur
 
 `gate-log.md` 结构（每段**每次提交**一行，原话引述，不许概括；表头用 `gate_check.py --template video` 打印）：
 
-| 序号 | 段号 | 动作 | 通道/模型 | 参数 | 参考视频 | 预计积分 | 上传素材（@ 编号） | 申请时间 | 用户授权原话 | 授权时间 | submit_id | 结果 | 备注 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | clip_01 | 首次 | multimodal2video / seedance2.5 | 6s/720p/9:16 | 传 src_01（3s） | 约99–117 | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | 10-28 14:02 | "第1段可以，选A带参考视频" | 10-28 14:05 | 1234567 | success | 原生人声 ✅ |
-| 2 | clip_01 | 重生成-画面 | multimodal2video / seedance2.5 | 6s/720p/9:16 | 不传 | 约120 | @Image1 char_猫、@Image2 scene_摊、@Image4 last_00 | 10-28 15:10 | "第1段重做一版，这次不带参考视频" | 10-28 15:12 | — | 待提交 | 上版尾帧抖 |
+| 序号 | 段号 | 动作 | 通道/模型 | 参数 | 参考视频 | 预计积分 | 实际积分 | 上传素材（@ 编号） | 申请时间 | 用户授权原话 | 授权时间 | submit_id | 结果 | 备注 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | clip_01 | 首次 | multimodal2video / seedance2.5 | 6s/720p/9:16 | 传 src_01（3s） | 约99–117 | 108 | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | 10-28 14:02 | "第1段可以，选A带参考视频" | 10-28 14:05 | 1234567 | success | 原生人声 ✅ |
+| 2 | clip_01 | 重生成-画面 | multimodal2video / seedance2.5 | 6s/720p/9:16 | 不传 | 约120 | — | @Image1 char_猫、@Image2 scene_摊、@Image4 last_00 | 10-28 15:10 | "第1段重做一版，这次不带参考视频" | 10-28 15:12 | — | 待提交 | 上版尾帧抖 |
 
 授权粒度：**一段一次**，第 N 段的授权不覆盖第 N+1 段，**第 1 次的授权也不覆盖第 2 次**；"全自动/直接跑完"不豁免；模糊答复（"都行/随便/你看着办"）不算授权。
+
+**实际积分必须回填**：每行生成成功后从 `dreamina list_task` 读 `commerce_info.credit_count` 填进「实际积分」列。`gate_check.py` 对「已生成但没回填」报 ⚠、对「与预计偏差 >30%」也报 ⚠，并汇总出全片实际消耗——这是报价脚本唯一的校准来源（`quote.py --calibrate --ref <秒>`）。
 
 **参考视频逐段决策（硬门，见 SKILL.md 5.0.5）**：`--video` 走的是另一档计费（计费秒数 = 参考片段 + 输出），所以每段都要让用户在 A/B 之间选，并同时给出两档积分与效果差。台账「参考视频」列必填 `传 src_NN（Xs）` 或 `不传`，且要与上传素材里的 `@Video1` 一致；`gate_check.py` 会查这两处矛盾。报价用 `python scripts/quote.py --duration <秒> --resolution <档> --ref <参考秒>`，第一段带参考视频成功后跑 `--calibrate --ref <秒>` 固定实测单价。
 
