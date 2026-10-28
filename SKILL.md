@@ -204,6 +204,8 @@ dreamina user_credit               # {"total_credit": 5799, "user_id": ..., "vip
 bash scripts/prepare-local-video.sh "<视频文件路径>" "01-拆解"
 ```
 
+⚠️ **第一次跑会下载 whisper 模型**（默认 `medium`，约 1.5GB，没有进度条，看起来像卡住）。想先验证链路通不通，加 `WHISPER_MODEL=tiny` 跑一遍（几秒出结果、准确率差但够判断流程），确认没问题再重跑一次 `medium` 拿准确转写——转写错一个字，后面台词对照就全错，正式流程别用 tiny。
+
 脚本产出 `metadata.json` / `audio.txt`（whisper 转写）/ `frame_*.jpg`（**每秒一帧的逐帧采样**）/ `scene_*.jpg`（场景切换帧）/ `sheet_*.jpg`（contact sheet，仅全局概览）/ `manifest.txt`。跑完先读 `manifest.txt` 回显抓到了什么。
 
 兜底通道也全部失败时，回到 `yyl-benchmark-breakdown` 的最后一级回退：Jina Reader / 引导用户粘贴文案与截图，绝不空手而归。
