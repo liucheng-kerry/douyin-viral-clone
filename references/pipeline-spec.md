@@ -101,7 +101,7 @@ python scripts/style_anchor.py --video "01-拆解/frame_001.jpg" \
 
 ## 阶段 4 → 阶段 5（提示词 → 视频）
 
-**输入**：`04-提示词/clip_<NN>.md`（严格 yyl-video-prompt 外壳格式）+ `01-拆解/src_clips/src_<NN>.mp4`（动作参考片段，进入本阶段前用 `scripts/split-source.sh` 一次性切完）。
+**输入**：`04-提示词/clip_<NN>.md`（严格 yyl-video-prompt 外壳格式）+ `01-拆解/src_clips/src_<NN>.mp4`（动作参考片段，用 `scripts/split-source.sh` 切；**每段传不传、传多长由用户逐段决定**，见阶段 5.0.5）。
 
 提示词正文的来源约定（质量关键）：
 - **风格句** ← `01-拆解/style-anchor.md`，落位按 yyl 写法分（A 一镜到底 → 【光影与风格】；B 多分镜 → 「色彩与影调」+「视觉基调」两处，见阶段 1.6 的映射表）。**色调词要逐字出现**，不许自己另写形容词；负向词写进正文末尾禁止项
@@ -159,12 +159,14 @@ python scripts/ref_check.py --materials 04-提示词/clip_NN.materials.txt --dur
 
 `gate-log.md` 结构（每段**每次提交**一行，原话引述，不许概括；表头用 `gate_check.py --template video` 打印）：
 
-| 序号 | 段号 | 动作 | 通道/模型 | 参数 | 预计积分 | 上传素材（@ 编号） | 申请时间 | 用户授权原话 | 授权时间 | submit_id | 结果 | 备注 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | clip_01 | 首次 | multimodal2video / seedance2.5 | 6s/720p/9:16 | 约120 | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | 10-28 14:02 | "第1段可以生成" | 10-28 14:05 | 1234567 | success | 原生人声 ✅ |
-| 2 | clip_01 | 重生成-画面 | multimodal2video / seedance2.5 | 6s/720p/9:16 | 约120 | @Image1 char_猫、@Image2 scene_摊、@Image4 last_00、@Video1 src_01 | 10-28 15:10 | "第1段重做一版，尾巴别抖" | 10-28 15:12 | — | 待提交 | 上版尾帧抖 |
+| 序号 | 段号 | 动作 | 通道/模型 | 参数 | 参考视频 | 预计积分 | 上传素材（@ 编号） | 申请时间 | 用户授权原话 | 授权时间 | submit_id | 结果 | 备注 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | clip_01 | 首次 | multimodal2video / seedance2.5 | 6s/720p/9:16 | 传 src_01（3s） | 约99–117 | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | 10-28 14:02 | "第1段可以，选A带参考视频" | 10-28 14:05 | 1234567 | success | 原生人声 ✅ |
+| 2 | clip_01 | 重生成-画面 | multimodal2video / seedance2.5 | 6s/720p/9:16 | 不传 | 约120 | @Image1 char_猫、@Image2 scene_摊、@Image4 last_00 | 10-28 15:10 | "第1段重做一版，这次不带参考视频" | 10-28 15:12 | — | 待提交 | 上版尾帧抖 |
 
 授权粒度：**一段一次**，第 N 段的授权不覆盖第 N+1 段，**第 1 次的授权也不覆盖第 2 次**；"全自动/直接跑完"不豁免；模糊答复（"都行/随便/你看着办"）不算授权。
+
+**参考视频逐段决策（硬门，见 SKILL.md 5.0.5）**：`--video` 走的是另一档计费（计费秒数 = 参考片段 + 输出），所以每段都要让用户在 A/B 之间选，并同时给出两档积分与效果差。台账「参考视频」列必填 `传 src_NN（Xs）` 或 `不传`，且要与上传素材里的 `@Video1` 一致；`gate_check.py` 会查这两处矛盾。报价用 `python scripts/quote.py --duration <秒> --resolution <档> --ref <参考秒>`，第一段带参考视频成功后跑 `--calibrate --ref <秒>` 固定实测单价。
 
 **重生成/重试/换通道的契约**（动作列必须写对，否则台账看不出花了两次钱）：
 
@@ -247,6 +249,7 @@ ffmpeg -i 05-配音/clip_01_dub.mp4 -af volumedetect -f null -
 | 视频提示词 | `04-提示词/clip_<NN>.md` + `04-提示词/.prompt/clip_<NN>.prompt.txt`（纯正文，供 `--prompt` 读取） |
 | **上传清单** | `04-提示词/clip_<NN>.materials.txt`（顺序 = `@` 编号 = 传参顺序；`scripts/ref_check.py` 的输入） |
 | **校验报告 / 生成命令** | `04-提示词/clip_<NN>.refs.md` + `04-提示词/clip_<NN>.cmd.sh`（由 `ref_check.py --out/--emit-cmd` 生成） |
+| 报价校准 | `05-成片/quote-calibration.md`（第一段带参考视频成功后，把真实 credit_count 与反推单价记下来，后续报价用实测值） |
 | 生成片段 | `05-成片/clip_<NN>.mp4`（画面 + 模型原生人声音轨）；重生成后的旧版移入 `05-成片/_old/clip_<NN>_v<k>.mp4`，不覆盖、不参与拼接 |
 | 逐次授权台账 | `05-成片/gate-log.md`（每段**每次提交**一行：动作/参数/上传素材/申请/用户原话/授权时间/submit_id/结果/音频验收） |
 | **拼接后成片（默认）** | `05-成片/成片_无BGM.mp4`（`concat.txt` 流拷贝拼接，等于各段之和） |

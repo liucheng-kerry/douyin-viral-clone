@@ -78,13 +78,13 @@ VAGUE_WORDS = ('全自动', '直接跑完', '别问了', '不用问', '你看着
                '随便', '都行', '都可以', '你决定', '听你的', '一键', '随你',
                '你来定', '跑吧', '继续吧', '你自己定')
 
-VIDEO_COLS = ('段号', '动作', '用户授权原话', '授权时间')
+VIDEO_COLS = ('段号', '动作', '参考视频', '用户授权原话', '授权时间')
 IMG_COLS = ('批次', '类型', '通道', '模型版本', '分辨率', '用户授权原话', '授权时间')
 
 TEMPLATE_VIDEO = (
-    '| 序号 | 段号 | 动作 | 通道/模型 | 参数（时长/分辨率/比例） | 预计积分 | 上传素材（@ 编号） | 申请时间 | 用户授权原话 | 授权时间 | submit_id | 结果 | 备注 |\n'
-    '|---|---|---|---|---|---|---|---|---|---|---|---|---|\n'
-    '| 1 | clip_01 | 首次 | multimodal2video / seedance2.5 | 6s / 720p / 9:16 | 约120 | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | 10-28 14:02 | "第1段可以生成" | 10-28 14:05 | 待提交 | 待提交 | — |\n'
+    '| 序号 | 段号 | 动作 | 通道/模型 | 参数（时长/分辨率/比例） | 参考视频 | 预计积分 | 上传素材（@ 编号） | 申请时间 | 用户授权原话 | 授权时间 | submit_id | 结果 | 备注 |\n'
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n'
+    '| 1 | clip_01 | 首次 | multimodal2video / seedance2.5 | 6s / 720p / 9:16 | 传 src_01（6s） | 约144 | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | 10-28 14:02 | "第1段可以生成，带参考视频" | 10-28 14:05 | — | 待提交 | — |\n'
 )
 TEMPLATE_IMAGE = (
     '| 批次 | 类型 | 通道 | 模型版本 | 分辨率 | 比例 | 张数 | 预计积分 | 申请时间 | 用户授权原话 | 授权时间 | 结果 | 产出文件 |\n'
@@ -253,8 +253,30 @@ def check_video(path, segment, errs, warns, infos):
             warns.append('%s 没写预计积分（等于没报价）' % tag)
         if action == '例外通道' and not col(header, row, '备注'):
             warns.append('%s 走了例外通道但没写原因（事后无法对账）' % tag)
+
+        # 参考视频：每段必须明确「传 / 不传」，且与上传素材一致（两档计费规则不同）
+        refv = col(header, row, '参考视频')
+        refn = norm(refv)
+        mats = col(header, row, '上传素材（@ 编号）') or col(header, row, '上传素材')
+        if not refn:
+            errs.append('%s 没记录「参考视频」——这段传不传参考视频必须由用户选定并写进台账'
+                        '（写「传 src_01（6s）」或「不传」）' % tag)
+        elif re.match(r'^(不传|否|无|不需要|不用|不带)', refn):
+            if 'Video' in mats:
+                errs.append('%s 参考视频写「不传」，但上传素材里有 @Video——两处矛盾；'
+                            '而且计费档不同，必须二选一' % tag)
+        elif re.match(r'^(传|是|带|用|参考)', refn):
+            if 'Video' not in mats:
+                errs.append('%s 参考视频写「传」，但上传素材里没有 @VideoN——两处矛盾'
+                            '（要么补素材，要么改成不传）' % tag)
+            if not re.search(r'\d', refn):
+                warns.append('%s 参考视频没写片段时长（如「传 src_01（6s）」）——'
+                             '带视频档按"参考秒数+输出秒数"计费，缺时长报不准积分' % tag)
+        else:
+            errs.append('%s 参考视频「%s」判断不了，只能写「传 src_NN（Xs）」或「不传」' % (tag, refv))
+
         if submitted:
-            if not col(header, row, '上传素材（@ 编号）') and not col(header, row, '上传素材'):
+            if not mats:
                 errs.append('%s 已提交但「上传素材」列为空——空着就说明这段是纯文生，违规' % tag)
             dead = [w for w in ('.prompt', '.md', '.txt') if w in sid]
             if dead:
@@ -292,6 +314,33 @@ def check_video(path, segment, errs, warns, infos):
             for i, a in after:
                 errs.append('%s 第 %d 行在这段已 success 后又提交，动作是「%s」——重生成要写重生成类动作'
                             % (seg, i, a or '(空)'))
+
+    # 台账「参考视频」列 vs materials 清单里的 @Video：两处不一致，就会按错档计费
+    root = os.path.dirname(os.path.dirname(os.path.abspath(path)))
+    seen_seg = set()
+    for idx, row in enumerate(rows, 1):
+        seg = col(header, row, '段号')
+        if not seg or seg in seen_seg:
+            continue
+        seen_seg.add(seg)
+        mat = os.path.join(root, '04-提示词', '%s.materials.txt' % seg)
+        if not os.path.isfile(mat):
+            continue
+        try:
+            with io.open(mat, 'r', encoding='utf-8-sig', errors='replace') as f:
+                has_video_mat = bool(re.search(r'^\s*@Video\d', f.read(), re.M))
+        except (IOError, OSError):
+            continue
+        last = [r for r in rows if col(header, r, '段号') == seg][-1]
+        refn = norm(col(header, last, '参考视频'))
+        if not refn:
+            continue
+        if refn.startswith('传') and not has_video_mat:
+            errs.append('%s 台账写「参考视频=传」，但 %s 里没有 @Video 行——命令不会带 --video，'
+                        '你以为传了其实没传' % (seg, os.path.basename(mat)))
+        elif re.match(r'^(不传|否|无|不需要|不用|不带)', refn) and has_video_mat:
+            errs.append('%s 台账写「参考视频=不传」，但 %s 里还有 @Video 行——cmd.sh 会带上 --video，'
+                        '按另一档计费；要么删素材行，要么改台账' % (seg, os.path.basename(mat)))
 
     for idx, row in enumerate(rows, 1):
         if not is_submitted(header, row):
