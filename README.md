@@ -52,6 +52,42 @@ git clone https://github.com/liucheng-kerry/douyin-viral-clone.git "$HOME/.workb
 
 装完重启 WorkBuddy（或新开会话）即可生效，本技能自包含、无需安装其他技能。
 
+## 快速开始（新电脑从零到能跑）
+
+**第 1 步：装系统依赖**（Windows 用 PowerShell / Git Bash，macOS 用 Homebrew）
+
+```bash
+# ffmpeg（抽帧、转写喂音、混音）
+winget install Gyan.FFmpeg          # macOS: brew install ffmpeg
+
+# Python + whisper（口播转写）
+winget install Python.Python.3.12   # macOS: brew install python
+pip install -U openai-whisper
+
+# 即梦 CLI（生图生视频通道，Windows 需在 Git Bash 里跑）
+curl -s https://jimeng.jianying.com/cli | bash
+```
+
+装完 **重开终端**（PATH 才生效）。
+
+**第 2 步：登录即梦**（OAuth 设备码，需在浏览器授权一次）
+
+```bash
+dreamina login
+```
+
+终端会打印授权链接和用户码，打开链接、核对用户码、完成授权；5 分钟内有效。之后 `dreamina user_credit` 能看到余额就说明登录成功。
+
+**第 3 步：环境自检**（缺什么会直接告诉你装什么）
+
+```bash
+bash ~/.workbuddy/skills/douyin-viral-clone/scripts/check-env.sh
+```
+
+**第 4 步：开始用**——在 WorkBuddy 里说：
+
+> 复刻这个爆款：<视频链接或本地文件路径>，主角换成 <你的选题>
+
 ## 依赖
 
 | 依赖 | 用途 | 必需性 |

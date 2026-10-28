@@ -33,7 +33,25 @@ replicate/2026-10-27-xxx/
 └── 06-BGM/       # bgm-spec.md 适配单 + BGM 音频 + BGM 混音版成片
 ```
 
-## 工作流（五阶段）
+## 工作流（阶段 0 环境自检 + 六阶段）
+
+### 阶段 0：环境自检与安装引导（开工前必跑，学员第一次用尤其重要）
+
+**第一句话先跑自检，不要在缺依赖的情况下闷头往下走**：
+
+```bash
+bash scripts/check-env.sh
+```
+
+脚本会逐项检查 git / ffmpeg / ffprobe / python / whisper / dreamina（含登录状态），并给缺失项打印对应安装命令（Windows / macOS 分别给了）。**必需项有 ❌ 时停下来，用一段话说清缺什么、为什么需要、怎么装，等学员装好再继续**——不要自己猜着往下跑，更不要静默失败。
+
+缺 dreamina 时的引导话术（这台机器还没装即梦 CLI 的典型情况）：
+
+1. 安装：`curl -s https://jimeng.jianying.com/cli | bash`（Windows 需在 Git Bash 里跑；装完 `~/bin/dreamina.exe` 已写入用户 PATH，**要重开终端**才生效）
+2. 登录：`dreamina login` —— 这是 OAuth 设备码流程，会打印授权链接和用户码，**必须由学员在浏览器完成授权**（链接 5 分钟内有效）。等的时候就明确告诉学员：「请在 X 分钟前打开这个链接，核对用户码，完成后回我一声」
+3. 验证：`dreamina user_credit` 能看到余额即登录成功；把余额报给学员，作为后续费用确认的基准
+
+其他常见缺项：whisper 缺失 → 口播转写不可用（阶段 1 会残废，必须装）；ffmpeg 缺失 → 抽帧/混音全挂；docker 未启动 → 抖音自动下载通道降级，改走「手机保存视频拖进对话」。
 
 ### 阶段 1：对标拆解（方法论权威 = 内嵌的 `yyl-benchmark-breakdown`）
 
@@ -234,6 +252,7 @@ CLI 不可用时回退 WorkBuddy 内置 ImageGen，并告知学员通道变更�
 ## Resources
 
 - `references/pipeline-spec.md` —— 各阶段输入/输出契约与示例文件命名，衔接细节拿不准时读它。
+- `scripts/check-env.sh` —— ★ 阶段 0 环境自检：缺什么、怎么装，逐项打印。
 - `references/dreamina-cli.md` —— ★ 即梦 CLI 生图生视频通道规范：前置检查、费用确认、命令速查、生成模式→命令映射、结果判定与容错。执行阶段 3/5 前先读它。
 - `vendored/yyl-benchmark-breakdown/` —— 内嵌拆解方法论（一比一副本）：SKILL.md 入口，fetch-playbook（取数回退）、visual-framework（视觉七维）、output-template（三件套模板）、scripts/（check-deps / prepare-assets / bootstrap-local-apis）。阶段 1 前读。
 - `vendored/yyl-video-prompt/` —— 内嵌视频提示词方法论（一比一副本）：SKILL.md 入口，modes/（两档写法）、examples/（标杆示例）、references/（镜头语言速查/工具适配）、scripts/prompt_builder.py（结构校验）。阶段 4 前读。
