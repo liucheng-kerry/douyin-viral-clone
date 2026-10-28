@@ -12,7 +12,7 @@
   # 视频：发申请单之前、执行 cmd.sh 之前
   python scripts/gate_check.py --gate 05-成片/gate-log.md --segment clip_01
 
-  # 图片：任何一批出图之前
+  # 图片：任何一张出图之前
   python scripts/gate_check.py --image-gate 03-资产/image-gate.md --batch img_02
 
   # 两份一起查（阶段交接时用）
@@ -32,8 +32,10 @@
   ✘ 视频：上传素材列不能为空（空着就说明这段是纯文生，违规）
   ✘ 图片：模型版本与分辨率组合不合法（按 dreamina CLI 实测矩阵）
   ✘ 图片：image2image 用了 3.0/3.1（改图不支持 3.x）
-  ✘ 图片：批量/单张补/重生成 之前没有一条 结果=success 的「样张」记录（违反样张先行）
-  ✘ 图片：张数不在 1–10、比例不在支持列表
+  ✘ 图片：张数不等于 1（本技能一个资产只出一张图，多面板/多角度装在同一张里）
+  ✘ 图片：类型写了已废弃的「批量 / 单张补」
+  ✘ 图片：图型与比例不匹配（角色sheet/场景9宫格/道具特写 必须 1:1；首帧不许 1:1）
+  ✘ 图片：类型写「重生成」但该批次前面没有任何出图记录
   ✘ submit_id 重复（复制粘贴导致的假记录）
   ⚠ 该行没有写预计积分（等于没报价）
   ⚠ 例外通道没写原因（事后无法对账）
@@ -68,7 +70,19 @@ VIDEO_ACTIONS_FIRST = ('首次', '例外通道', '测试')
 VIDEO_ACTIONS_REDO = ('重生成-画面', '重生成-音频', '重试-失败')
 VIDEO_ACTIONS = VIDEO_ACTIONS_FIRST + VIDEO_ACTIONS_REDO
 
-IMG_ACTIONS = ('样张', '批量', '单张补', '重生成')
+IMG_ACTIONS = ('样张', '单张', '重生成')          # 一个资产一张图：样张=本项目第一张
+IMG_ACTIONS_LEGACY = ('批量', '单张补')            # 旧台账写法，现在出现即判 ✘
+# 图型 -> 允许的比例规则：panel=必须 1:1（2x2 / 3x3 方阵）；frame=必须与成片同比例（不许 1:1）
+IMG_TYPES_PANEL = ('角色sheet', '场景9宫格', '道具特写')
+IMG_TYPES_FRAME = ('首帧改绘', '衔接帧')
+IMG_TYPE_ALIAS = {
+    '角色sheet': '角色sheet', '角色四面板': '角色sheet', '四面板': '角色sheet',
+    '角色图': '角色sheet', 'charactersheet': '角色sheet',
+    '场景9宫格': '场景9宫格', '场景九宫格': '场景9宫格', '九宫格': '场景9宫格', '场景图': '场景9宫格',
+    '道具特写': '道具特写', '道具图': '道具特写', '道具': '道具特写',
+    '首帧改绘': '首帧改绘', '首帧图': '首帧改绘', '首帧': '首帧改绘', '改绘': '首帧改绘',
+    '衔接帧': '衔接帧', '末帧': '衔接帧',
+}
 
 VIDEO_RESULTS = ('待提交', 'querying', 'success', 'fail', '已下载', '已验收')
 IMG_RESULTS = ('待提交', 'querying', 'success', 'fail', '已下载')
@@ -87,9 +101,9 @@ TEMPLATE_VIDEO = (
     '| 1 | clip_01 | 首次 | multimodal2video / seedance2.5 | 6s / 720p / 9:16 | 传 src_01（6s） | 约132–156 |  | @Image1 char_猫、@Image2 scene_摊、@Image3 frame_001、@Video1 src_01 | 10-28 14:02 | "第1段可以生成，带参考视频" | 10-28 14:05 | — | 待提交 | — |\n'
 )
 TEMPLATE_IMAGE = (
-    '| 批次 | 类型 | 通道 | 模型版本 | 分辨率 | 比例 | 张数 | 预计积分 | 实际积分 | 申请时间 | 用户授权原话 | 授权时间 | 结果 | 产出文件 |\n'
-    '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n'
-    '| img_01 | 样张 | image2image | 5.0 | 2k | 9:16 | 1 | 约8 | 8 | 10-28 11:20 | "就用5.0 2k，先出这张" | 10-28 11:23 | success | 03-资产/first_A.png |\n'
+    '| 批次 | 类型 | 图型 | 通道 | 模型版本 | 分辨率 | 比例 | 张数 | 预计积分 | 实际积分 | 申请时间 | 用户授权原话 | 授权时间 | 结果 | 产出文件 |\n'
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n'
+    '| img_01 | 样张 | 角色sheet | text2image | 5.0 | 2k | 1:1 | 1 | 约3 | 3 | 10-28 11:20 | "img_01 可以，5.0 2k 方图" | 10-28 11:23 | success | 03-资产/char_猫.png |\n'
 )
 
 
@@ -437,8 +451,13 @@ def check_images(path, batch, errs, warns, infos):
         ratio = col(header, row, '比例')
         num = col(header, row, '张数')
         result = col(header, row, '结果')
+        kind = norm(col(header, row, '图型'))
+        kind = IMG_TYPE_ALIAS.get(kind, kind)
 
-        if typ and typ not in IMG_ACTIONS:
+        if typ in IMG_ACTIONS_LEGACY:
+            errs.append('%s 类型「%s」已废弃：现在一个资产只出 1 张图，没有批量。'
+                        '改成「单张」（或本项目第一张写「样张」）' % (tag, typ))
+        elif typ and typ not in IMG_ACTIONS:
             warns.append('%s 类型「%s」不在约定枚举（%s）' % (tag, typ, '/'.join(IMG_ACTIONS)))
         if result and result not in IMG_RESULTS:
             warns.append('%s 结果「%s」不在约定枚举（%s）' % (tag, result, '/'.join(IMG_RESULTS)))
@@ -463,14 +482,37 @@ def check_images(path, batch, errs, warns, infos):
         if num:
             if not re.fullmatch(r'\d+', num):
                 warns.append('%s 张数「%s」不是纯数字' % (tag, num))
-            elif not (1 <= int(num) <= 10):
-                errs.append('%s 张数 %s 超限（1–10）' % (tag, num))
+            elif int(num) != 1:
+                errs.append('%s 张数写了 %s——本技能一个资产只出 1 张（4 面板 / 9 宫格都装在'
+                            '同一张图里），要多个资产就分多次申请、每张单独授权' % (tag, num))
+        else:
+            warns.append('%s 没写张数（应写 1：一个资产一张图）' % tag)
 
-        # 样张先行
-        if typ in ('批量', '单张补', '重生成') and sample_ok_at is None:            errs.append('%s 类型是「%s」，但台账里没有一条 结果=success 的「样张」记录——'
-                        '违反样张先行：先出 1 张过风格三问，再批量' % (tag, typ))
-        elif typ in ('批量', '单张补', '重生成') and sample_ok_at and sample_ok_at > idx:
-            errs.append('%s 的样张记录排在本行之后——顺序反了，样张必须在批量之前' % tag)
+        # 图型与比例必须匹配：面板图是方阵（1:1），首帧要跟成片同比例
+        if kind and ratio:
+            if kind in IMG_TYPES_PANEL and ratio != '1:1':
+                errs.append('%s 图型「%s」是面板图，比例必须 1:1（2×2 / 3×3 是方阵，用 %s 会把边格裁掉）'
+                            % (tag, kind, ratio))
+            elif kind in IMG_TYPES_FRAME and ratio == '1:1':
+                errs.append('%s 图型「%s」是画面参考，比例要与成片一致（9:16 / 16:9），1:1 会被二次裁切'
+                            % (tag, kind))
+        elif not kind:
+            warns.append('%s 没写「图型」（角色sheet / 场景9宫格 / 道具特写 / 首帧改绘），'
+                         '脚本没法核对比例对不对' % tag)
+        elif kind not in IMG_TYPES_PANEL + IMG_TYPES_FRAME:
+            warns.append('%s 图型「%s」不认识（角色sheet / 场景9宫格 / 道具特写 / 首帧改绘 / 衔接帧）'
+                         % (tag, kind))
+
+        # 重生成必须有在先记录：同一批次前面得有失败或已出图的行，否则"重生成"是凭空多花的钱
+        if typ == '重生成':
+            prev = []
+            for r in rows[:idx - 1]:
+                rk = norm(col(header, r, '图型'))
+                if col(header, r, '批次') == b or (kind and IMG_TYPE_ALIAS.get(rk, rk) == kind):
+                    prev.append(r)
+            if not prev:
+                errs.append('%s 类型写「重生成」，但台账里前面没有同一批次或同一图型的出图记录——'
+                            '先有第 1 次，才有第 2 次（否则这笔钱说不清）' % tag)
 
         # 实际积分：出图成功后回填，图片单价按模型分档，偏差大说明选错了模型/分辨率
         actual = col(header, row, '实际积分')
@@ -498,12 +540,12 @@ def check_images(path, batch, errs, warns, infos):
         if not hit:
             errs.append('%s 里没有批次 %s 的记录——先写「出图申请单」并记账，再执行生图命令'
                         % (path, batch))
-        infos.append('%s：台账共 %d 批，样张%s'
-                     % (path, len(rows), ('已过（第 %d 行）' % sample_ok_at) if sample_ok_at else '未过 ⚠'))
+        infos.append('%s：台账共 %d 张，首张样张%s'
+                     % (path, len(rows), ('已出（第 %d 行）' % sample_ok_at) if sample_ok_at else '还没出 ⚠'))
 
-    infos.append('%s：%d 批记录' % (path, len(rows)))
+    infos.append('%s：%d 张记录' % (path, len(rows)))
     if img_rows:
-        infos.append('出图已回填实际积分 %d 批，合计 %g 积分' % (img_rows, img_actual))
+        infos.append('出图已回填实际积分 %d 张，合计 %g 积分' % (img_rows, img_actual))
 
 
 # ------------------------------------------------------------------ 报告
