@@ -5,7 +5,7 @@
 # 退出码: 0 = 必需项齐全；1 = 缺必需项
 #
 # 检查项分级：
-#   必需（缺了跑不通）：git / ffmpeg / ffprobe / python / whisper / dreamina（已安装 + 已登录）
+#   必需（缺了跑不通）：git / ffmpeg / ffprobe / python / whisper / edge-tts / dreamina（已安装 + 已登录）
 #   可选（缺了降级）：node（npx 安装方式）/ docker（本地抖音下载 API 通道）/ yt-dlp（链接下载通道）
 
 set -uo pipefail
@@ -42,12 +42,15 @@ for b in ffmpeg ffprobe; do
     fail "$b 未安装" "Windows: winget install Gyan.FFmpeg（装完重开终端）｜ macOS: brew install ffmpeg"; fi
 done
 
-echo "━━━ 2. 转写能力 ━━━"
+echo "━━━ 2. 音频能力（转写 + 配音）━━━"
 PY=$(command -v python || command -v python3 || true)
 if [ -n "$PY" ]; then
   pass "python $($PY --version 2>&1 | awk '{print $2}')"
-  if "$PY" -c "import whisper" 2>/dev/null; then pass "openai-whisper 已安装"; else
+  if "$PY" -c "import whisper" 2>/dev/null; then pass "openai-whisper 已安装（口播转写）"; else
     fail "openai-whisper 未安装" "pip install -U openai-whisper（首次转写会下载 medium 模型，约 1.5GB）"; fi
+  # 即梦 CLI 不出声，对白必须靠 edge-tts 注入（阶段 5.5），缺了成片就是哑片
+  if "$PY" -c "import edge_tts" 2>/dev/null; then pass "edge-tts 已安装（阶段 5.5 对白配音）"; else
+    fail "edge-tts 未安装" "pip install -U edge-tts（对白配音必需；缺了成片没有台词）"; fi
 else
   fail "python 未安装" "Windows: winget install Python.Python.3.12 ｜ macOS: brew install python"
 fi

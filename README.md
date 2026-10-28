@@ -6,25 +6,34 @@
 对标链接 → ①拆解 → ②复刻确认+脚本 → ③即梦生图资产 → ④视频提示词 → ⑤即梦生成成片 → ⑥BGM 适配合成
 ```
 
-## 工作流（六阶段）
+## 工作流（七阶段）
 
 | 阶段 | 内容 | 关键产出 |
 |---|---|---|
+| ⓪ 环境自检 | 开工先跑 `scripts/check-env.sh`，缺依赖直接给安装命令，不许闷头往下跑 | 依赖清单 |
 | ① 对标拆解 | 以 `yyl-benchmark-breakdown` 为方法论权威（四层+视觉七维），叠加**逐帧九项拆解**（主体/道具/环境/景别/机位/运镜/构图/光线/文字），逐帧合并成镜头段 | `frame-table.md` + 三件套报告 + 声音层记录 |
-| ② 复刻确认+脚本 | 确认复刻方式（1:1 / 主角替换 / 只借结构）→ 写分段时间轴脚本 | `script.md` |
+| ② 复刻确认+脚本 | 确认复刻方式（1:1 / 主角替换 / 只借结构）→ 写分段时间轴脚本 + **台词时间码表** | `script.md` |
 | ③ 图片资产 | 角色四面板 + 场景九宫格 + **各段首帧图**（逐项对齐逐帧拆解表对应秒的画面结构），即梦 CLI 生成 | `char_*.png` / `scene_*.png` / `first_*.png` |
-| ④ 视频提示词 | 严格按 `yyl-video-prompt` 方法论：景别/机位/运镜/构图照逐帧拆解表复刻；首帧图生模式下外观不进正文；时间码即动作预算 | `clip_<NN>.md` |
-| ⑤ 即梦生成成片 | 按生成模式映射 CLI 命令（text2video / image2video / frames2video / multiframe2video / multimodal2video），费用确认门 + 成功判定 + 中断恢复 | `clip_<NN>.mp4` + 拼接版 |
-| ⑥ BGM 适配合成 | **硬确认门：学员确认成片后才启动**。写 BGM 适配单（情绪曲线对齐钩子/转折秒数）→ 生成音频（即梦 Web / 曲库 / Suno）→ ffmpeg 混音 | `成片_BGM版.mp4` |
+| ④ 视频提示词 | 严格按 `yyl-video-prompt` 方法论：景别/机位/运镜/构图照逐帧拆解表复刻；首帧图生模式下外观不进正文；时间码即动作预算；**口型动作与台词表逐字同源** | `clip_<NN>.md` |
+| ⑤ 即梦生成画面 | 按生成模式映射 CLI 命令（text2video / image2video / frames2video / multiframe2video / multimodal2video），首帧接力保连续性，费用确认门 + 成功判定 + 中断恢复 | `clip_<NN>.mp4`（**无音轨**） |
+| **⑤.5 对白配音与音效** | **必做，不做就是哑片**。即梦 CLI 全部视频命令没有音频参数，对白必须后期注入：写 `dialogue_c<NN>.json` → `scripts/dub.py` 用 edge-tts 按秒合成 → ffmpeg 只加音轨不重编码 → silencedetect/volumedetect 校验 | `dialogue_c<NN>.json` + `clip_<NN>_dub.mp4` |
+| ⑥ BGM 适配合成 | **硬确认门：学员确认成片后才启动**。写 BGM 适配单（情绪曲线对齐钩子/转折秒数）→ 生成音频（即梦 Web / 曲库 / Suno）→ ffmpeg 以配音轨为底混音 | `成片_BGM版.mp4` |
+
+> ⚠️ **关于对白**：即梦 CLI 的 `image2video` / `text2video` / `multimodal2video` 都没有任何音频参数（`dreamina --help` 里不存在 audio/tts/lip 子命令），生成的 mp4 只有视频流。所以「让模型直接念台词」做不到，对白一律由阶段 ⑤.5 按时间码注入。想要口型精准同步，只能在即梦 Web 端「对口型」二次处理。
 
 ## 目录结构
 
 ```
 douyin-viral-clone/
-├── SKILL.md                    # 六阶段编排流程（入口）
+├── SKILL.md                    # 七阶段编排流程（入口）
 ├── references/
 │   ├── pipeline-spec.md        # 各阶段输入/输出契约与文件命名
 │   └── dreamina-cli.md         # 即梦 CLI 生图生视频通道规范
+├── scripts/
+│   ├── check-env.sh            # 阶段 0 环境自检（缺什么/怎么装）
+│   ├── dub.py                  # 阶段 5.5 对白配音注入（edge-tts + ffmpeg）
+│   ├── fetch-video.sh          # 链接下载兜底通道（yt-dlp）
+│   └── prepare-local-video.sh  # 本地视频证据包（转写+逐帧抽帧+contact sheet）
 ├── vendored/
 │   ├── yyl-benchmark-breakdown/  # 内嵌拆解方法论（一比一副本，阶段 1 用）
 │   └── yyl-video-prompt/         # 内嵌视频提示词方法论（一比一副本，阶段 4 用）
@@ -60,9 +69,9 @@ git clone https://github.com/liucheng-kerry/douyin-viral-clone.git "$HOME/.workb
 # ffmpeg（抽帧、转写喂音、混音）
 winget install Gyan.FFmpeg          # macOS: brew install ffmpeg
 
-# Python + whisper（口播转写）
+# Python + whisper（口播转写）+ edge-tts（对白配音，阶段 5.5 必需）
 winget install Python.Python.3.12   # macOS: brew install python
-pip install -U openai-whisper
+pip install -U openai-whisper edge-tts
 
 # 即梦 CLI（生图生视频通道，Windows 需在 Git Bash 里跑）
 curl -s https://jimeng.jianying.com/cli | bash
@@ -94,6 +103,7 @@ bash ~/.workbuddy/skills/douyin-viral-clone/scripts/check-env.sh
 |---|---|---|
 | [WorkBuddy](https://www.workbuddy.cn) | 运行环境（Skill 工具调用、多模态读图） | 必需 |
 | [即梦 CLI (dreamina)](https://jimeng.jianying.com/cli) | 生图生视频通道，需即梦账号授权 | 必需（阶段 3/5） |
+| edge-tts | 对白配音（CLI 生成的视频无音轨，对白必须后期注入） | 必需（阶段 5.5） |
 | ffmpeg + ffprobe | 抽帧、转写喂音、混音合成 | 必需 |
 | openai-whisper | 口播转写 | 必需 |
 | yt-dlp | 链接下载兜底通道 | 可选 |
@@ -112,6 +122,7 @@ bash ~/.workbuddy/skills/douyin-viral-clone/scripts/check-env.sh
 - **保守执行**：生成操作消耗即梦积分，每个付费动作前报余额与预计消耗
 - **成功判定严格**：`gen_status=success` 才算完成；中断后凭 `list_task` 找回，避免重复扣积分
 - **质量来自拆解**：图片和视频的质量上限由逐帧拆解的颗粒度决定——每个物体、景别、机位、运镜、构图都要落到提示词里
+- **声音不靠模型靠流程**：即梦 CLI 不出声，对白一律由阶段 5.5 按台词时间码注入；提示词只负责把口型动作对齐到同一张时间表，两边共用一份 `dialogue_c<NN>.json`
 
 ## 来源声明（Credits）
 
@@ -120,4 +131,4 @@ bash ~/.workbuddy/skills/douyin-viral-clone/scripts/check-env.sh
 - `vendored/yyl-benchmark-breakdown/`（对标拆解方法论）
 - `vendored/yyl-video-prompt/`（导演式 AI 视频提示词方法论）
 
-来自 **「鱼亦乐」的方法论技能包**，为一比一完整副本（未做任何内容修改），在此致谢。其版权归原作者所有，本仓库收录仅用于教学复刻工作流的内部衔接。若你是原作者并希望移除或更改署名方式，请提 Issue 或联系仓库所有者，我们会立即处理。`vendored/` 之外的其余部分（六阶段编排、逐帧拆解规范、即梦 CLI 通道、脚本）为本仓库原创。
+来自 **「鱼亦乐」的方法论技能包**，为一比一完整副本（未做任何内容修改），在此致谢。其版权归原作者所有，本仓库收录仅用于教学复刻工作流的内部衔接。若你是原作者并希望移除或更改署名方式，请提 Issue 或联系仓库所有者，我们会立即处理。`vendored/` 之外的其余部分（七阶段编排、逐帧拆解规范、即梦 CLI 通道、配音注入脚本）为本仓库原创。
