@@ -6,12 +6,22 @@
 
 ```bash
 dreamina --version        # 确认 CLI 可用（安装于 ~/bin/dreamina.exe）
-dreamina user_credit      # 确认登录态 + 报积分余额
+dreamina user_credit      # 确认登录态 + 报积分余额 + 看 vip_level
 ```
 
+> 三件事一起做完再开工：**登录态**（`--headless` 两段式，见下）、**余额**（不够就在阶段 0 说，别等阶段 5）、**`vip_level`**（`seedance2.5` 标注 VIP 限定）。脚本 `scripts/check-env.sh` 已把这三项都打出来了，先跑它。
+
 - 已登录 → 直接向用户报「当前余额 N 积分」。
-- **顺手确认 VIP 等级**：`user_credit` 返回的 `vip_level` 要为真，因为默认通道 `multimodal2video` + `seedance2.5` 是 **VIP 限定**。没有 VIP → 先说明，再选降级：`seedance2.0_vip`（720p/1080p/4k，图 ≤9）或升级会员；不要闷头提交等报错。
-- 未登录/报错 → 引导执行 `dreamina login`（OAuth Device Flow）。CLI 会打印 `verification_uri`、`user_code`，把链接和用户码贴给学员，在浏览器完成授权后 CLI 自动返回成功；把账户信息（user_id / vip_level / total_credit）明确告知学员。**登录命令必须等它跑完并回显结果，不能只贴链接就走。**
+- **顺手确认 VIP 等级**：`user_credit` 返回的 `vip_level`（本机示例 `standard`）。CLI 帮助写明默认通道 `multimodal2video` + `seedance2.5` 是 **VIP 限定**；`standard` 账号是否真被拦截尚未实测，所以**按可能被拒处理**——提前说明，提交报权限不足就降级 `seedance2.0_vip`（720p/1080p/4k，图 ≤9）或让学员开会员，不要闷头提交等报错。
+- **首次用某个模型要先在网页端跑一次**：CLI 帮助原文「部分模型首次使用时，需要先在即梦 Web 端使用该模型完成首次生成」，否则提交返回 `AigcComplianceConfirmationRequired`。第一次用 seedance2.5 前先跟学员打招呼，别等报错。
+- 未登录/报错 → 走 **headless 两段式**，不要直接跑 `dreamina login`：它打印链接后会一直阻塞等授权，学员在浏览器里花几分钟，命令早就超时、链接也贴不出去。
+
+  ```bash
+  dreamina login --headless                                  # 打印 verification_uri / user_code / device_code 后立即退出
+  dreamina login checklogin --device_code=<code> --poll=30    # 学员授权后确认（--poll=0 只查一次）
+  ```
+
+  把 `verification_uri` 与 `user_code` **原样**贴给学员，说清「几分钟内有效 / 打开后核对用户码一致 / 完成后回我一声」。已登录时 `--headless` 会直接回「已复用当前本地 OAuth 登录态」，所以这条命令可以安全重复跑。换账号或 token 失效（`user_credit` 报未登录 / 401）→ `dreamina relogin --headless` 重走一遍。成功后把 user_id / vip_level / total_credit 明确告知学员，**不能只贴链接就走**。
 - CLI 不可用且学员不便授权（网络故障、无即梦账号）→ 回退 WorkBuddy 内置 ImageGen/VideoGen，并明确告知通道变更（此时 **`@` 引用机制失效**，只能靠文字描述，质量会降一档，要如实说）。
 
 ## 授权与费用（硬门槛，不可跳过、不可合并授权）

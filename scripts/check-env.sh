@@ -68,8 +68,22 @@ if [ -n "$DREAMINA" ]; then
   if echo "$CREDIT" | grep -qE 'total_credit'; then
     BAL=$(echo "$CREDIT" | grep -oE '"total_credit": *[0-9]+' | grep -oE '[0-9]+' | head -1)
     echo "  ✅ 已登录即梦，积分余额 ${BAL:-见 user_credit 输出}"
+    # 会员等级：seedance2.5（默认主通道）是 VIP 限定，standard 账号提交会被直接拒
+    VIP=$(echo "$CREDIT" | grep -oE '"vip_level": *"[^"]*"' | sed 's/.*: *"//; s/"$//' | head -1)
+    if echo "$VIP" | grep -qiE '^(vip|svip|premium|pro|member)'; then
+      echo "  ✅ 会员等级 ${VIP}（seedance2.5 可用）"
+    else
+      echo "  ⚠️  会员等级 ${VIP:-未知}：CLI 标注 seedance2.5 为 VIP 限定（未实测是否拦截）"
+      echo "     → 若阶段 5 提交报权限不足，降级 seedance2.0_vip（720p/1080p/4k，图 ≤9）或开会员"
+    fi
+    # 余额门：图片约 3 积分/张；视频 720p 约 20 积分/秒 → 15 秒成片约 300 积分
+    if [ -n "${BAL:-}" ] && [ "$BAL" -lt 100 ] 2>/dev/null; then
+      echo "  ⚠️  余额偏低（${BAL} 积分）：一支 15 秒 720p 成片约需 300 积分，出图每张约 3 积分"
+      echo "     → 先充值再开工，别等阶段 3 第一张图就失败"
+    fi
+    echo "  ℹ️  首次使用 seedance2.5 前，需先在即梦 Web 端用该模型生成一次；否则会返回 AigcComplianceConfirmationRequired"
   else
-    fail "dreamina 未登录" "运行 dreamina login，按提示在浏览器完成授权（5 分钟内有效），或问 agent 帮你发起登录"
+    fail "dreamina 未登录" "dreamina login --headless 拿到 verification_uri / user_code / device_code（打印完即退出），浏览器授权后再 dreamina login checklogin --device_code=<code> --poll=30；已登录过但失效则 dreamina relogin --headless"
   fi
   # 全能参考（multimodal2video）是整个流程的视频主通道，旧版 CLI 可能根本没有这个子命令
   if $DREAMINA multimodal2video --help 2>&1 | grep -q -- '--image'; then

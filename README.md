@@ -94,10 +94,13 @@ curl -s https://jimeng.jianying.com/cli | bash
 **第 2 步：登录即梦**（OAuth 设备码，需在浏览器授权一次）
 
 ```bash
-dreamina login
+dreamina login --headless        # 打印授权链接 + 用户码 + device_code 后立即退出
+dreamina login checklogin --device_code=<上一步的 device_code> --poll=30
 ```
 
-终端会打印授权链接和用户码，打开链接、核对用户码、完成授权；5 分钟内有效。之后 `dreamina user_credit` 能看到余额就说明登录成功。
+`--headless` 打印完就退出，链接才能及时贴给你；直接跑 `dreamina login` 会原地阻塞等授权，等到超时也拿不到链接。终端会给出授权链接和用户码，打开链接、核对用户码、完成授权；之后 `dreamina user_credit` 能看到余额就说明登录成功。已登录时 `--headless` 会回「已复用当前本地 OAuth 登录态」，可以放心重复跑；换账号或失效用 `dreamina relogin --headless`。
+
+> 登录成功 ≠ 能开工：`user_credit` 里还有两个字段要看——**余额**（一支 15 秒 720p 成片约 300 积分）和 **`vip_level`**（`seedance2.5` 标注 VIP 限定）。`check-env.sh` 会把这两项一起打出来。
 
 **第 3 步：环境自检**（缺什么会直接告诉你装什么）
 
