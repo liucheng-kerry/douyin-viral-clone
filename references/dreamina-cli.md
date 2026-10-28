@@ -10,8 +10,9 @@ dreamina user_credit      # 确认登录态 + 报积分余额
 ```
 
 - 已登录 → 直接向用户报「当前余额 N 积分」。
+- **顺手确认 VIP 等级**：`user_credit` 返回的 `vip_level` 要为真，因为默认通道 `multimodal2video` + `seedance2.5` 是 **VIP 限定**。没有 VIP → 先说明，再选降级：`seedance2.0_vip`（720p/1080p/4k，图 ≤9）或升级会员；不要闷头提交等报错。
 - 未登录/报错 → 引导执行 `dreamina login`（OAuth Device Flow）。CLI 会打印 `verification_uri`、`user_code`，把链接和用户码贴给学员，在浏览器完成授权后 CLI 自动返回成功；把账户信息（user_id / vip_level / total_credit）明确告知学员。**登录命令必须等它跑完并回显结果，不能只贴链接就走。**
-- CLI 不可用且学员不便授权（网络故障、无即梦账号）→ 回退 WorkBuddy 内置 ImageGen/VideoGen，并明确告知通道变更。
+- CLI 不可用且学员不便授权（网络故障、无即梦账号）→ 回退 WorkBuddy 内置 ImageGen/VideoGen，并明确告知通道变更（此时 **`@` 引用机制失效**，只能靠文字描述，质量会降一档，要如实说）。
 
 ## 授权与费用（硬门槛，不可跳过、不可合并授权）
 
@@ -28,7 +29,7 @@ dreamina user_credit      # 确认登录态 + 报积分余额
 | 阶段 3 生图 | **1 张样张 → 批量** 两段式 | 先做第 1 段首帧样张，过风格三问 + 学员点头后，才批量生成剩余 N 张（批量时报总消耗） |
 | 阶段 5 生视频 | **一段一授权** | 每段单独发「生成申请单」，学员逐段确认；第 N 段授权不覆盖第 N+1 段；"全自动/直接跑完"不豁免；模糊答复不算授权；失败重试要重新报费用并取得同意 |
 
-视频段的授权必须落到 `05-成片/gate-log.md`（申请时间 / 用户原话 / 授权时间 / submit_id / 结果），**没有这一行不许提交**。申请单的七项固定内容见 SKILL.md 阶段 5.2。
+视频段的授权必须落到 `05-成片/gate-log.md`（申请时间 / 上传素材 / 用户原话 / 授权时间 / submit_id / 结果），**没有这一行不许提交**。申请单的八项固定内容（含**上传清单**）见 SKILL.md 阶段 5。
 
 ## 命令速查（详细参数以 `dreamina <子命令> -h` 为准，不要凭记忆硬编码）
 
@@ -59,27 +60,93 @@ dreamina text2image --prompt="..." --ratio=9:16 --resolution_type=2k --generate_
 - `--generate_num` 1–10；`--poll=N` 提交后顺带等 N 秒。
 - 竖屏资产用 `--ratio=9:16`，横屏用 16:9。
 
-### 生视频（全部异步：提交 → submit_id → query_result）
+### 生视频：全能参考 `multimodal2video`（★ 默认且唯一的正式通道）
 
-| yyl-video-prompt 生成模式 | Dreamina 命令 |
-|---|---|
-| 纯文生 | `text2video` |
-| 首帧图生 | `image2video` |
-| 首尾帧 | `frames2video` |
-| 多图参考（多图故事） | `multiframe2video`（固定模型，不可选模型） |
-| 全能参考 / Seedance 2.5 多图 | `multimodal2video` |
+对应即梦 Web 的「全能参考」（旧名 ref2video）。**所有正式段落都走这条**，其余命令只在标明例外时用。能力边界以 `dreamina multimodal2video --help` 实测为准：
+
+| 项 | seedance2.5 | seedance2.0 家族 |
+|---|---|---|
+| 图片上限 | ≤30 张 | ≤9 张 |
+| 视频上限 | ≤10 条，单条 2–30s，**总长 ≤30s** | ≤3 条，总 ≤15s |
+| 音频上限 | ≤10 条，单条 2–30s，总 ≤30s | ≤3 条 |
+| 素材总数 | ≤50 | ≤12 |
+| 输出时长 | 4–30s | 4–15s |
+| 分辨率 | 480p / 720p / 1080p | 720p（`_vip` 可 720p/1080p/4k） |
+| 权限 | **VIP 限定** | 普通可用 |
+| 最少素材 | 可以只传音频 | 至少 1 图或 1 视频 |
+
+**`@` 引用机制（这条不写对，多图就是白传）**
+
+上传后在 prompt 里用 `@Image1` / `@Video1` / `@Audio1` 逐个点名，编号规则：
+
+- `--image` 按**命令行出现顺序**编号：第 1 个是 `@Image1`，第 2 个 `@Image2`……
+- `--video` 独立编号，从 `@Video1` 起；`--audio` 从 `@Audio1` 起（不要混入 Image 序号）
+- **调换 `--image` 顺序 = 改变提示词语义**。申请单里的清单顺序必须与命令逐字一致
+
+官方（Seedance 2.5 发布会 30 秒音乐会示例）的写法结构值得照搬：**先给画幅/影调 → 再逐个分配每个素材的职责（"Use @Image1 for the venue"）→ 最后才写动作与镜头**。职责在前、动作在后，模型才分得清哪张图管什么。
+
+**`@` 是否真被解析，第一次生成后必须验证**
+
+提交第 1 段后先看输出：如果主体明显不像 `@Image1` 的角色、或背景被 `@Video1` 整段抄走，说明这次提交没吃到引用分工。按这个顺序试，一次只改一处：
+
+1. 把 `@Image1` 换成自然语言指代（"图1中的人物""第一张图里的猫"）再提交一次——自然语言指代同样有效，某些版本对它更敏感
+2. 两者都无效 → 该 CLI 版本可能不透传引用标记：此时改用"**减少素材 + 强化文字**"（只传角色图 + 场景图，其余靠描述），并在交付说明里如实告诉学员这个局限，不要假装分工生效了
+3. 别靠加图解决——图越多，没被点名的图越容易变成噪音
+
+**素材职责：一个素材只给一件事**
+
+| 传入 | 交给它 | 不要它管 |
+|---|---|---|
+| `--image` 角色图 | 脸、毛色/发色、体型、服装、材质 | 背景、姿势、构图 |
+| `--image` 场景图 | 地点、陈设、空间结构、招牌文字 | 人物、光比强度 |
+| `--image` 道具图 | 外形、状态、标签文字 | 场景、人物 |
+| `--image` 原片同秒帧 | 构图、景别、机位、光线方向 | 主体长相 |
+| `--image` 上段末帧 | 起始状态、与上段连贯 | 除起始状态外的一切 |
+| `--video` 原片段 | 动作、运镜、节奏、切点 | **主体形象、服装、背景、配色** |
+
+分工能降低串味概率，但**不保证零串味**——官方文档也明确"separate roles reduce conflicts but do not guarantee that no detail transfers"。所以提示词里必须逐条写"不取什么"。
+
+**串味排查顺序**（出现"角色被带跑/背景被抄"时，按这个顺序一次只改一处）：
+
+1. 该素材的"不取什么"是否写清楚了 → 补一句负面约束
+2. 图是不是给多了 → 一次减一张，找出打架的那张（通常是最相似的两张，比如两张都是人物图）
+3. 场景图和角色图里是否混进了对方的内容（角色图背景有店招 = 会被当环境）
+4. `--video` 传了原片段又传了原片同秒帧 → 两者信息重叠，删掉同秒帧
+5. 仍不行 → 拆成两段生成，别在一段里堆素材
+
+**命令**
 
 ```bash
-# 文生视频（默认 seedance2.0fast，5s）
-dreamina text2video --prompt="..." --duration=5 --ratio=9:16 --video_resolution=720p --poll=120
-
-# 首帧图生视频（默认 seedance2.0_vip；比例自动跟随首帧）
-dreamina image2video --image=./clip_01_first.png --prompt="..." --video_resolution=720p --poll=120
+dreamina multimodal2video \
+  --image "03-资产/char_猫.png" \
+  --image "03-资产/scene_烤鱼摊.png" \
+  --image "01-拆解/frame_001.jpg" \
+  --video "01-拆解/src_clips/src_01.mp4" \
+  --prompt "$(cat "04-提示词/.prompt/clip_01.prompt.txt")" \
+  --model_version=seedance2.5 --duration=6 --ratio=9:16 \
+  --video_resolution=720p --poll=120
 ```
 
-- `--video_resolution` **必填**。seedance2.5 → 480p/720p/1080p，时长 4–30s，**VIP 专属**；seedance2.0_vip → 720p/1080p/4k；其他模型 → 720p，时长 4–15s。
-- `image2video` / `frames2video` 用 seedance2.5 时**禁止传 `--ratio`**（输出跟随首帧）；其他模型可传也可自动跟随。
-- `--duration` 默认 5s。
+- `--video_resolution` **必填**；`--ratio` 省略默认 16:9，抖音竖屏显式写 `9:16`
+- `--prompt` 可以传空（纯素材驱动）但**本技能从不这么用**——没有文字就没有台词、没有动作时间轴
+- 提示词走文件 + `$(cat …)`，避免命令行转义把 `@` 和引号吃掉；Windows 命令行上限约 8000 字符，正文控制在 1500 字内
+- 本地文件会在提交前自动上传，无需手动先传
+
+**例外通道（用了必须在 gate-log 写原因）**
+
+| 场景 | 命令 | 说明 |
+|---|---|---|
+| 首帧必须像素级等于参考图 | `frames2video`（首尾帧）或 `image2video` | 全能参考只保证"像"，不保证首帧一致 |
+| 仅试风格、不出正式段 | `text2video` | 不许作为段落产物 |
+| 多图故事板（固定节奏转场） | `multiframe2video` | 模型不可选；`--images` 逗号分隔 |
+
+```bash
+# 首帧图生（例外）：seedance2.5 下禁止传 --ratio，画幅跟随首帧
+dreamina image2video --image=./first_A.png --prompt="..." --video_resolution=720p --poll=120
+```
+
+- `image2video` / `frames2video` 用 seedance2.5 时**禁止传 `--ratio`**；其他模型可传也可自动跟随
+- 各命令 `--duration` 默认 5s
 
 ### 音频（重要事实，别再搞错）
 
