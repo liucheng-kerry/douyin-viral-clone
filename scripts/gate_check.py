@@ -298,6 +298,30 @@ def check_video(path, segment, errs, warns, infos):
         if not col(header, row, '预计积分'):
             warns.append('%s 没写预计积分（等于没报价）' % tag)
 
+        # 模型与分辨率：必须由学员在申请单里选定后逐字写进台账（提交行强制）
+        model = (col(header, row, '通道/模型') or col(header, row, '模型') or '').strip()
+        param = (col(header, row, '参数（时长/分辨率/比例）') or col(header, row, '参数') or '').strip()
+        mlow = model.lower()
+        if model and not any(k in mlow for k in ('seedance2.5', 'seedance2.0_vip', 'seedance2.0', 'seedance1')):
+            warns.append('%s 模型「%s」不在常用清单（seedance2.5 / seedance2.0_vip）——'
+                         '若是例外通道（模型不可选），备注列写清原因' % (tag, model))
+        if submitted and not model:
+            errs.append('%s 已提交但没写模型——模型必须由学员在申请单里选定（① seedance2.5 ② seedance2.0_vip）'
+                        '并写进台账，不许默认沿用' % tag)
+        elif not submitted and not model:
+            warns.append('%s 还没写模型——发申请单时模型要以选择题形式报给学员' % tag)
+        res_m = re.search(r'(480p|720p|1080p|4k)', param, re.I)
+        if res_m:
+            res = res_m.group(1).lower()
+            if res in ('4k', '1080p'):
+                warns.append('%s 分辨率 %s：单价未实测，'
+                             '提交前先跑 1s 小样测价（quote.py --rate-only 看实测表）' % (tag, res))
+        elif submitted:
+            errs.append('%s 已提交但参数里没写清分辨率（480p/720p/1080p）——'
+                        '分辨率必须由学员选定并写进台账，不许默认沿用' % tag)
+        elif not param:
+            warns.append('%s 参数列还是空的（时长/分辨率/比例）' % tag)
+
         # 实际积分：生成成功后必须回填，否则"报的价"和"扣的钱"永远对不上账
         actual = col(header, row, '实际积分')
         if result in ('success', '已验收', '已下载') or (not result and submitted):
