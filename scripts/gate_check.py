@@ -22,6 +22,9 @@
   python scripts/gate_check.py --template video
   python scripts/gate_check.py --template image
 
+  # 资产交付对账（每张图落盘后、问学员"能用吗"之前；阶段 3 收尾再跑一次）
+  python scripts/gate_check.py --image-gate 03-资产/image-gate.md --asset-audit 03-资产
+
 检查项（✘ = 不许提交，退出码 1；⚠ = 建议改）：
   ✘ 台账存在且能解析出表头（缺列 = 台账是自己另写的，无法对账）
   ✘ 每一行提交记录（submit_id 非空 / 结果非空）都有「用户授权原话 + 授权时间」
@@ -36,6 +39,8 @@
   ✘ 图片：类型写了已废弃的「批量 / 单张补」
   ✘ 图片：图型与比例不匹配（场景/首帧必须与成片同比例 9:16；主角建议 3:4，方图给 ⚠）
   ✘ 图片：类型写「重生成」但该批次前面没有任何出图记录
+  ✘ 资产对账：磁盘资产与台账「产出文件」不是一一对应（多了=漏交付/漏记账，少了=台账记了假账）
+  ✘ 资产对账：资产还是下载原名（<submit_id>_image_1.png），没改成 char_/scene_/prop_/first_
   ✘ submit_id 重复（复制粘贴导致的假记录）
   ⚠ 该行没有写预计积分（等于没报价）
   ⚠ 例外通道没写原因（事后无法对账）
@@ -568,6 +573,103 @@ def check_images(path, batch, errs, warns, infos):
         infos.append('出图已回填实际积分 %d 张，合计 %g 积分' % (img_rows, img_actual))
 
 
+# ------------------------------------------------------------------ 资产交付对账
+
+ASSET_PREFIXES = ('char_', 'scene_', 'prop_', 'first_', 'last_')
+ASSET_ORDER = {'char_': 0, 'scene_': 1, 'prop_': 2, 'first_': 3, 'last_': 4}
+ASSET_EXTS = ('.png', '.jpg', '.jpeg', '.webp')
+# query_result 的原始下载名：<submit_id>_image_1.png
+RAW_DL_RE = re.compile(r'^[0-9A-Za-z]{6,}_(image|video)_\d+\.[A-Za-z0-9]+$')
+
+
+def scan_assets(asset_dir):
+    """扫资产目录 → (定稿文件列表[(路径, 文件名)] 按 char→scene→prop→first→last 排序, 旧稿数, 未改名下载稿列表)"""
+    keep, old, raw = [], 0, []
+    for root, dirs, names in os.walk(asset_dir):
+        rel = os.path.relpath(root, asset_dir).replace('\\', '/')
+        parts = [] if rel == '.' else rel.split('/')
+        if 'qc' in parts:          # 质检报告目录，不算资产
+            continue
+        for n in names:
+            low = n.lower()
+            if not low.endswith(ASSET_EXTS):
+                continue
+            if '_old' in parts:    # 废稿不算定稿
+                old += 1
+                continue
+            if low.startswith(ASSET_PREFIXES):
+                keep.append((os.path.join(root, n), n))
+            elif RAW_DL_RE.match(n):
+                raw.append(n)
+    keep.sort(key=lambda x: (ASSET_ORDER.get(x[1].split('_')[0] + '_', 9), x[1]))
+    return keep, old, raw
+
+
+def audit_assets(asset_dir, gate_path, errs, warns, infos):
+    """磁盘 ↔ 台账「产出文件」双向对账。
+
+    存在的理由：学员看得见的是对话里交付的图，不是文件夹。实测出过"目录三张、对话只交付一张"——
+    人眼对不出来，但台账与磁盘是两份独立记录，一对就能指出是哪一张漏了。
+    """
+    if not os.path.isdir(asset_dir):
+        errs.append('找不到资产目录 %s——资产必须都落在同一个目录，否则对不了账' % asset_dir)
+        return
+
+    keep, old, raw = scan_assets(asset_dir)
+    disk = set(n for _, n in keep)
+
+    declared = []
+    if not gate_path:
+        warns.append('没有可用的图片台账，只能查命名与磁盘数量，没法核对"该交付几张"')
+    else:
+        header = rows = None
+        for h, r in parse_tables(gate_path):
+            if '批次' in h and ('图型' in h or '类型' in h):
+                header, rows = h, r
+                break
+        if header is None:
+            errs.append('%s 里找不到图片台账表格（用 --template image 打印表头先建表）' % gate_path)
+        else:
+            for idx, row in enumerate(rows, 1):
+                if col(header, row, '结果') not in ('success', '已下载'):
+                    continue
+                p = col(header, row, '产出文件').strip().strip('`').strip()
+                if not p or p in ('—', '-', '——'):
+                    errs.append('台账第 %d 行（批次 %s）结果是成功，但「产出文件」空着——'
+                                '这张图到底交付没有说不清，先补上文件路径'
+                                % (idx, col(header, row, '批次') or '?'))
+                    continue
+                declared.append((idx, col(header, row, '批次') or '?', re.split(r'[\\/]', p)[-1].strip('`')))
+    dset = set(n for _, _, n in declared)
+
+    if gate_path:
+        for idx, b, pb in declared:
+            if pb not in disk:
+                errs.append('台账第 %d 行（%s）写着产出 %s，但 %s 里没这个文件——'
+                            '记录与实际不符：没落盘？还是落了却改了名？先弄清楚再问学员"能不能用"'
+                            % (idx, b, pb, asset_dir))
+        for n in sorted(disk - dset):
+            errs.append('%s 在磁盘上，但台账没有任何一行写它——要么漏记账，要么出图后没交付给学员'
+                        '（"文件夹三张、对话一张"就是这么来的）。补台账并补一次 present_files 交付' % n)
+    for n in raw:
+        errs.append('%s 还是下载原名（<submit_id>_image_1.png）——没改成规范名，'
+                    '阶段 5 的 @ImageN 会指错。改成 char_ / scene_ / prop_ / first_ 前缀' % n)
+    if old:
+        infos.append('%s 下 _old/ 有 %d 张废稿（不计入定稿，也不会被阶段 5 选中）' % (asset_dir, old))
+
+    if gate_path:
+        infos.append('定稿资产：磁盘 %d 张 / 台账成功 %d 行%s'
+                     % (len(disk), len(dset),
+                        '' if len(disk) == len(dset) else
+                        '  ← 数量不一致，上面的 ✘ 没清零前不许问"这张能用吗"'))
+    else:
+        infos.append('定稿资产：磁盘 %d 张（没有台账，没法核对"该交付几张"）' % len(disk))
+    if keep:
+        lines = ['应交付清单（present_files 的 files 必须逐项覆盖；刚出的那张排第一）：']
+        lines += ['   %s' % os.path.abspath(p).replace('\\', '/') for p, _ in keep]
+        infos.append('\n'.join(lines))
+
+
 # ------------------------------------------------------------------ 报告
 
 
@@ -598,6 +700,9 @@ def main():
     ap.add_argument('--segment', default='', help='只校验这一段（clip_01），提交该段前必带')
     ap.add_argument('--image-gate', default='', help='图片台账 03-资产/image-gate.md')
     ap.add_argument('--batch', default='', help='只校验这一批（img_01），执行生图前必带')
+    ap.add_argument('--asset-audit', default='',
+                    help='资产交付对账：给 03-资产 目录，核磁盘文件与台账「产出文件」列是否一一对应，'
+                         '并打印本次必须交付的清单（防"目录三张、只交付一张"）')
     ap.add_argument('--out', default='', help='报告输出路径（xxx.gate-check.md）')
     ap.add_argument('--template', choices=('video', 'image'), help='打印标准表头后退出')
     args = ap.parse_args()
@@ -609,8 +714,8 @@ def main():
         print('把表头与示例行照抄进台账，改内容；列名不要动（脚本按列名取值）。')
         return
 
-    if not args.gate and not args.image_gate:
-        ap.error('至少要给一个台账：--gate（视频）或 --image-gate（图片）')
+    if not args.gate and not args.image_gate and not args.asset_audit:
+        ap.error('至少要给一个台账：--gate（视频）或 --image-gate（图片），或用 --asset-audit 对账资产')
 
     errs, warns, infos = [], [], []
 
@@ -621,12 +726,19 @@ def main():
             print('=== 视频台账校验：%s%s ===' % (args.gate, (' / ' + args.segment) if args.segment else ''))
             check_video(args.gate, args.segment, errs, warns, infos)
 
+    image_gate_ok = bool(args.image_gate) and os.path.isfile(args.image_gate)
     if args.image_gate:
-        if not os.path.isfile(args.image_gate):
+        if not image_gate_ok:
             errs.append('找不到图片台账 %s（阶段 3 第一次出图前就要建它）' % args.image_gate)
         else:
             print('=== 图片台账校验：%s%s ===' % (args.image_gate, (' / ' + args.batch) if args.batch else ''))
             check_images(args.image_gate, args.batch, errs, warns, infos)
+
+    if args.asset_audit:
+        print('=== 资产交付对账：%s ===' % args.asset_audit)
+        audit_assets(args.asset_audit,
+                     args.image_gate if image_gate_ok else '',
+                     errs, warns, infos)
 
     for i in infos:
         print('  ✓ %s' % i)
@@ -637,10 +749,12 @@ def main():
 
     if errs:
         print('\n✘ 不通过：%d 项必须改。未清零不许执行生成命令（图片和视频都一样，重生成也一样）。' % len(errs))
-    else:
+    elif args.gate or args.image_gate:
         print('\n✅ 通过：台账能对上账（授权原话 / 时间 / 参数都在），可以执行生成。')
         if args.gate and args.segment:
             print('   下一步：bash 04-提示词/%s.cmd.sh' % args.segment)
+    else:
+        print('\n✅ 通过：资产命名规范、数量已列出（本次没给台账，授权未校验）。')
 
     if args.out:
         print('报告：%s' % write_report(args.out, errs, warns, infos, args))
