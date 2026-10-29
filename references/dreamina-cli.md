@@ -164,7 +164,7 @@ dreamina text2image --prompt="..." --ratio=9:16 --resolution_type=2k --generate_
 | `--image` 场景图 | 地点、陈设、空间结构、招牌文字 | 人物、光比强度 |
 | `--image` 道具图 | 外形、状态、标签文字 | 场景、人物 |
 | `--image` 原片同秒帧 | 构图、景别、机位、光线方向 | 主体长相 |
-| `--image` 上段末帧 | 起始状态、与上段连贯 | 除起始状态外的一切 |
+| `--image` 上段末帧 | **`画面首帧`**：本段第一帧的构图、景别、机位、主体位置、光线方向（只用于续接段） | 上一段的动作残余、表情走向；切镜段不传 |
 | `--video` 原片段 | 动作、运镜、节奏、切点 | **主体形象、服装、背景、配色** |
 
 分工能降低串味概率，但**不保证零串味**——官方文档也明确"separate roles reduce conflicts but do not guarantee that no detail transfers"。所以提示词里必须逐条写"不取什么"。

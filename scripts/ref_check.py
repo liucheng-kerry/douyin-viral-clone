@@ -18,6 +18,9 @@
   @Image3 | 01-拆解/frame_001.jpg        | 锁构图/景别/机位/光线方向   | 主体长相不取
   @Video1 | 01-拆解/src_clips/src_01.mp4 | 锁动作/运镜/节奏/切点       | 不复制主体形象、服装、背景、配色
 
+续接段（与上一段同一镜头、无切镜）多一行末帧，职责必须写「画面首帧」：
+  @Image4 | 03-资产/last_01.jpg          | 画面首帧：锁定本段第一帧的构图/景别/机位/主体位置/光线方向 | 不取上一段动作残余
+
 检查项（✘ = 必须改，退出码 1；⚠ = 建议改）：
   ✘ 素材文件存在、非空、扩展名与 @ 类型一致
   ✘ 编号从 1 起连续（Image1..N / Video1..N / Audio1..N，同类不许跳号）
@@ -25,9 +28,11 @@
   ✘ 每个 @ 在本段正文里必须带「不取什么」的否定约束
   ✘ 至少 1 张 Image（本技能的硬规则：不许纯文生跑正式段落）
   ✘ 正文必须有【参考素材】段
+  ✘ last_*.jpg（上一段末帧）的职责与正文说明都必须写「画面首帧」——写成「锁起始状态」模型不当首帧用
   ✘ 正文不许出现「不生成语音 / 后期配音 / 仅保留同期声」等致哑表述
   ✘ .prompt/clip_NN.prompt.txt 与 clip_NN.md 代码块正文逐字一致（两处不一致 = 校验过的和提交的不是同一份）
   ✘ 视频素材单条 2–30s、合计 ≤30s；图片 ≤30 张
+  ⚠ last_NN 的段号不等于「当前段号-1」（续接段拿错段）
   ⚠ 图片超过 6 张（违反最少素材原则，串味概率上升）
   ⚠ 正文长度 >1500 字（Windows 命令行上限约 8000 字符）
   ⚠ 风格句的色调词覆盖不足（给了 --style-anchor 才查）
@@ -311,6 +316,32 @@ def check(args):
     # 6) 【参考素材】段
     if '【参考素材】' not in body and '参考素材：' not in body:
         errs.append('正文缺少【参考素材】段（必须在正文最前，逐个 @ 写锁什么/不取什么）')
+
+    # 6.5) 续接段的「画面首帧」写法：last_<NN>.jpg 必须在清单与提示词里都标成「画面首帧」
+    #      写成"锁起始状态/衔接帧"模型只当普通构图参考，不会拿它当第一帧（阶段 5.0.0）
+    cur_seg = 0
+    mseg = re.search(r'clip[_-]?(\d+)', stem)
+    if mseg:
+        cur_seg = int(mseg.group(1))
+    for token, kind, idx, file, role, neg in mats:
+        base = os.path.basename(file).lower()
+        is_last = re.match(r'last[_-]', base) is not None
+        hit = [m.start() for m in TOKEN_RE.finditer(body) if m.group(0) == token]
+        clause = ' '.join(clause_after(body, p, token) for p in hit)
+        if is_last:
+            if '画面首帧' not in (role or ''):
+                errs.append('%s（%s）是上一段的末帧，清单职责必须写「画面首帧」——写成「锁起始状态」'
+                            '模型只会当普通构图参考，不会拿它当本段第一帧' % (token, file))
+            if hit and '画面首帧' not in clause:
+                errs.append('%s 在提示词里没标「画面首帧」——【参考素材】段要写「%s 是本段【画面首帧】，'
+                            '以它作为本段第一帧继续动作」' % (token, token))
+            mlast = re.search(r'last[_-](\d+)', base)
+            if cur_seg and mlast and int(mlast.group(1)) != cur_seg - 1:
+                warns.append('%s 用的是 last_%s，但当前是第 %d 段——续接段应当用上一段（last_%02d）的末帧，'
+                             '确认没拿错段' % (token, mlast.group(1), cur_seg, max(cur_seg - 1, 1)))
+        elif '画面首帧' in (role or '') and hit:
+            warns.append('%s 标了「画面首帧」但文件不是 last_*（上一段末帧）——第 1 段这样写没问题；'
+                         '第 2 段起若判为续接，首帧应当来自上一段成片（bash scripts/last-frame.sh）' % token)
 
     # 7) 致哑表述
     mute = [w for w in MUTE_WORDS if w in body]

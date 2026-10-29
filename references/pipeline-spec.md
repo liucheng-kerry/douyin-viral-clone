@@ -123,9 +123,9 @@ python scripts/gate_check.py --image-gate 03-资产/image-gate.md --asset-audit 
 @Video1 = src_clips/src_01.mp4 → 只参考动作节奏与运镜，不复制其中主体、服装、背景、配色
 ```
 
-编号全片统一（角色永远 `@Image1`、场景永远 `@Image2`），每段开头重新声明（生成工具无跨段记忆）。段间衔接：上一段段尾状态写进下一段构图要求 + 用 `last_<NN>.jpg` 作为该段 `@ImageN`；需要改绘衔接帧时仍用 `dreamina image2image`（多图**英文逗号**分隔 `--images="a.png,b.png"`，CLI 不可用时回退 ImageGen）。
+编号全片统一（角色永远 `@Image1`、场景永远 `@Image2`），每段开头重新声明（生成工具无跨段记忆）。**段间衔接先判关系（SKILL 5.0.0）**：切镜 → 该段自己的 `first_<X>.png` 锁构图；续接（同一镜头拆成两段）→ 上一段成片末帧 `last_<NN>.jpg` 当 **`画面首帧`**，清单职责与正文说明都写这四个字，动作时间轴第 0 秒写成"与它完全一致、从此继续"。需要改绘衔接帧时仍用 `dreamina image2image`（多图**英文逗号**分隔 `--images="a.png,b.png"`，CLI 不可用时回退 ImageGen）——**但续接段不要改绘**，抽帧不花钱，改绘要花钱且接不准。
 
-**阶段 3 与阶段 5 是交错的，不是串行的**：阶段 3 只产出「主角定妆 + 场景定场 + 第 1 段首帧图」，每样一张。第 2 段及以后的首帧依赖上一段实际生成的画面（抽末帧 `last_<NN>.jpg` 接力，或照实际构图改绘），必须等上一段视频通过验收后才做。提前把 N 张首帧一次性做完 = 白花钱 + 接不上。
+**阶段 3 与阶段 5 是交错的，不是串行的**：阶段 3 只产出「主角定妆 + 场景定场 + 第 1 段首帧图」，每样一张。第 2 段及以后**先判切镜/续接**：续接 → 从上一段成片抽末帧（不生成图、不花钱）；切镜 → 才需要照实际构图改绘一张。都要等上一段视频通过验收后才做。提前把 N 张首帧一次性做完 = 白花钱 + 接不上。
 
 ## 阶段 4 → 阶段 5（提示词 → 视频）
 
@@ -149,7 +149,7 @@ python scripts/gate_check.py --image-gate 03-资产/image-gate.md --asset-audit 
 | 角色图 | `--image` 第 1 个 | `@Image1` |
 | 场景图 | `--image` 第 2 个 | `@Image2` |
 | 道具图（可选） | `--image` 第 3 个 | `@Image3` |
-| 该段构图参考（`first_X.png` / `last_NN.jpg`） | `--image` 紧随其后 | `@ImageN` |
+| 该段构图参考：切镜段 `first_X.png`｜续接段 `last_NN.jpg`（职责写 **`画面首帧`**） | `--image` 紧随其后 | `@ImageN` |
 | 该段原片段（`src_clips/src_NN.mp4`） | `--video` 第 1 个 | `@Video1` |
 
 **`--image` 的出现顺序就是编号顺序，也是提示词的语义**——申请单清单、命令、提示词三处顺序必须逐字一致。
@@ -275,7 +275,7 @@ bash scripts/ffx.sh ffmpeg -i 05-配音/clip_01_dub.mp4 -af volumedetect -f null
 | 道具图（可选） | `03-资产/prop_<道具名>.png` |
 | **出图参数与授权台账** | `03-资产/image-gate.md`（**每张图一行**：批次/类型/图型/通道/模型/分辨率/比例/张数/预计积分/实际积分/申请/用户原话/授权时间/结果；张数恒为 1），`scripts/gate_check.py` 的输入 |
 | **出图提示词** | `03-资产/prompts/<资产>.md`（九段结构 + `## 风格锚`，按 `ai-drama-reference-art` 写） |
-| 各段首帧/构图参考 | `03-资产/first_<X>.png`（原片帧改绘，路径 A）+ `03-资产/last_<NN>.jpg`（上一段 clip 末帧抽帧，接力用） |
+| 各段首帧/构图参考 | `03-资产/first_<X>.png`（原片帧改绘，路径 A）+ `03-资产/last_<NN>.jpg`（上一段 clip 末帧，续接段当 `画面首帧`；`scripts/last-frame.sh` 抽，带黑场/运动自检） |
 | **动作参考片段** | `01-拆解/src_clips/src_<NN>.mp4` + `01-拆解/src_clips/src-manifest.txt`（由 `scripts/split-source.sh` 按 `01-拆解/segs.txt` 切出，全能参考 `--video` 用） |
 | 视频提示词 | `04-提示词/clip_<NN>.md` + `04-提示词/.prompt/clip_<NN>.prompt.txt`（纯正文，供 `--prompt` 读取） |
 | **上传清单** | `04-提示词/clip_<NN>.materials.txt`（顺序 = `@` 编号 = 传参顺序；`scripts/ref_check.py` 的输入） |

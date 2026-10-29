@@ -642,13 +642,24 @@ def audit_assets(asset_dir, gate_path, errs, warns, infos):
                 declared.append((idx, col(header, row, '批次') or '?', re.split(r'[\\/]', p)[-1].strip('`')))
     dset = set(n for _, _, n in declared)
 
+    # last_*.jpg 是阶段 5 从上一段成片抽的衔接帧，不经过图片台账（不花钱、不出图），
+    # 所以只参与交付清单，不参与台账对账，否则每张续接帧都会被误判成"漏记账"
+    LEDGER_PREFIXES = ('char_', 'scene_', 'prop_', 'first_')
+    ledger_disk = set(n for n in disk if n.lower().startswith(LEDGER_PREFIXES))
+    ledger_decl = set(n for n in dset if n.lower().startswith(LEDGER_PREFIXES))
+    last_frames = sorted(disk - ledger_disk)
+    if dset - ledger_decl:
+        warns.append('%s 在图片台账里被记了行，但它是阶段 5 抽的衔接帧、不花图钱——'
+                     '台账只记真出图的资产（char_/scene_/prop_/first_），衔接帧记在 gate-log 备注即可'
+                     % '、'.join(sorted(dset - ledger_decl)))
+
     if gate_path:
         for idx, b, pb in declared:
             if pb not in disk:
                 errs.append('台账第 %d 行（%s）写着产出 %s，但 %s 里没这个文件——'
                             '记录与实际不符：没落盘？还是落了却改了名？先弄清楚再问学员"能不能用"'
                             % (idx, b, pb, asset_dir))
-        for n in sorted(disk - dset):
+        for n in sorted(ledger_disk - ledger_decl):
             errs.append('%s 在磁盘上，但台账没有任何一行写它——要么漏记账，要么出图后没交付给学员'
                         '（"文件夹三张、对话一张"就是这么来的）。补台账并补一次 present_files 交付' % n)
     for n in raw:
@@ -658,9 +669,9 @@ def audit_assets(asset_dir, gate_path, errs, warns, infos):
         infos.append('%s 下 _old/ 有 %d 张废稿（不计入定稿，也不会被阶段 5 选中）' % (asset_dir, old))
 
     if gate_path:
-        infos.append('定稿资产：磁盘 %d 张 / 台账成功 %d 行%s'
-                     % (len(disk), len(dset),
-                        '' if len(disk) == len(dset) else
+        infos.append('定稿资产：磁盘 %d 张（台账类 %d + 衔接帧 %d）/ 台账成功 %d 行%s'
+                     % (len(disk), len(ledger_disk), len(last_frames), len(ledger_decl),
+                        '' if len(ledger_disk) == len(ledger_decl) else
                         '  ← 数量不一致，上面的 ✘ 没清零前不许问"这张能用吗"'))
     else:
         infos.append('定稿资产：磁盘 %d 张（没有台账，没法核对"该交付几张"）' % len(disk))
